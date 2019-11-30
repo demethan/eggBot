@@ -3,8 +3,11 @@ from discord.ext import commands
 import random
 
 #store discord token in the config.cfg file
-with open ("config.cfg","r") as file:
-    token = file.read()
+try:
+    with open ("config.cfg","r") as file:
+        token = file.read()
+except Exception:
+    print("config.cfg file missing")
 
 class eggBot(commands.Bot):
     def __init__(self, *args, **kwargs):
@@ -21,12 +24,6 @@ class eggBot(commands.Bot):
     adminChannelID = 'kitchen'
     supportChannelID = 'support'
         
-    #status command
-    @commands.command(description='Get a list of servers')
-    async def status(ctx, arg):
-        """Get a list of servers"""
-        await ctx.send(arg)
-
     # support channel welcome concierge
     async def on_member_join(self, member):
         guild = member.guild
@@ -35,8 +32,19 @@ class eggBot(commands.Bot):
             to_send = to_send + 'If you haven''t done so already, visite '+ self.applyUrl +'\r\n'
             await guild.system_channel.send(to_send)
             channel = self.get_channel(adminChannelID)
-            await channel.send('possible new member in support')
+            await channel.send('possible new member in support, please check web application.')
 
+    #status command
+    @commands.command(description='Get info about one or all the Minecraft servers')
+    async def status(ctx, arg=None):
+        """Get info about one or all the Minecraft servers"""
+        if arg is not None:
+            #get arg(server) info details a send that
+            await ctx.send(arg+' info: blah blah blah')
+        else:
+            #send complete server list info
+            await ctx.send('list of sever info')
+        
 
     #roll command
     @commands.command(description='Roll a dice of your choice.')
