@@ -2,6 +2,12 @@ import discord
 from discord.ext import commands
 import random
 
+#variables
+applyUrl = "https://breakfastcraft.com/page/apply/"
+connectUrl = "https://www.breakfastcraft.com/page/connection-information/"
+adminChannelID = 'kitchen'
+supportChannelID = 'support'
+
 #store discord token in the config.cfg file
 try:
     with open ("config.cfg","r") as file:
@@ -13,37 +19,47 @@ class eggBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.add_command(self.status)
+        self.add_command(self.howto)
         self.add_command(self.roll)
         self.add_command(self.kick)
         self.add_command(self.ban)
         self.add_command(self.packName)
         self.add_command(self.packVersion)
         self.add_command(self.schedule)
-    
-    applyUrl = "https://breakfastcraft.com/page/apply/"
-    adminChannelID = 'kitchen'
-    supportChannelID = 'support'
         
     # support channel welcome concierge
     async def on_member_join(self, member):
         guild = member.guild
-        if guild.system_channel is None and member.channel == supportChannelID:
+        if guild.system_channel is None and member.channel == self.supportChannelID:
             to_send = 'Welcome {0.mention} to BreakfastCraft! \r\n'.format(member)
             to_send = to_send + 'If you haven''t done so already, visite '+ self.applyUrl +'\r\n'
             await guild.system_channel.send(to_send)
-            channel = self.get_channel(adminChannelID)
+            channel = self.get_channel(self.adminChannelID)
             await channel.send('possible new member in support, please check web application.')
 
     #status command
     @commands.command(description='Get info about one or all the Minecraft servers')
     async def status(ctx, arg=None):
         """Get info about one or all the Minecraft servers"""
+        channel = ctx.get_channel
+        if channel.id not supportChannelID or channel.id not adminChannelID:
+            ctx.send("Please use in the support channel. Thx!")
+            return
+
         if arg is not None:
             #get arg(server) info details a send that
             await ctx.send(arg+' info: blah blah blah')
         else:
             #send complete server list info
             await ctx.send('list of sever info')
+
+    #howto command
+    @commands.command(description='Get URL to connection intructions')
+    async def howto(ctx):
+        """Get URL to connection intructions"""
+        author = ctx.message.author
+        channel = await author.create_dm()
+        await channel.send(connectUrl)
         
 
     #roll command
