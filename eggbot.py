@@ -1,22 +1,17 @@
 import discord
 from discord.ext import commands
 import random
+import json
 
-#variables
-applyUrl = "https://breakfastcraft.com/page/apply/"
-connectUrl = "https://www.breakfastcraft.com/page/connection-information/"
-adminChannelID = 232872597090467841
-supportChannelID = 650767954127880239
+with open('config.json', 'r') as config:
+    config_dict = json.load(config)
 
-#store discord token in the config.cfg file
-try:
-    with open ("config.cfg","r") as file:
-        token = file.read()
-except Exception:
-    print("config.cfg file missing")
-
-
-
+token = config_dict["token"]
+adminChannelID = config_dict["adminChannelID"]
+supportChannelID = config_dict["supportChannelID"]
+applyUrl = config_dict["applyURL"]
+connectUrl = config_dict["connectURL"]
+joinMessage = config_dict["joinMessage"]
 
 class eggBot(commands.Bot):
     def __init__(self, *args, **kwargs):
@@ -32,11 +27,8 @@ class eggBot(commands.Bot):
     async def on_member_join(seld, member):
         guild = member.guild
         if guild.system_channel is None:
-            to_send = 'Welcome {0.mention} to BreakfastCraft! \r\n'.format(member)
-            to_send = to_send + 'If you haven\'t done so already, visite '+ applyUrl +'\r\n'
-            to_send = to_send + 'One of the admins will notify in you in #support once the application is approved and/or you will get a reply by email'
             channel = await member.create_dm()
-            await channel.send(to_send)
+            await channel.send(joinMessage.format(member=member,applyUrl=applyUrl))
 
     #status command
     @commands.command(description='Get info about one or all the Minecraft servers')
