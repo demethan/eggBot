@@ -16,13 +16,14 @@ class CommandsCog(commands.Cog):
         
         set_command_dict = {"applyurl":"applyUrl","connecturl":"connectUrl", "joinmessage":"joinMessage"  }
         
-        if ctx.message.channel.id != DATA["adminChannelID"]:
-            print("ignored command, not from admin")
+        if not self.client.is_allowed(ctx):
             return
+
         arg = set_command_dict.get(arg.lower(), None)        
         if arg is not None and text is not None:
             DATA[arg] = text.strip()
             save_data()
+            await ctx.send("Saved!")
         else:
             await ctx.send(" ~set argument is not valid. usage ~set <applyUrl|connectUrl|joinMessage> <text>.")
     
@@ -33,8 +34,7 @@ class CommandsCog(commands.Cog):
     async def status(self, ctx, arg=None):
         """Get info about one or all the Minecraft servers"""
         channel = ctx.get_channel
-        if channel.id != DATA["supportChannelID"] or channel.id != DATA["adminChannelID"]:
-            await ctx.send("Please use in the support channel. Thx!")
+        if not self.client.is_allowed(ctx):
             return
 
         if arg is not None:
@@ -65,22 +65,12 @@ class CommandsCog(commands.Cog):
 
         result = ', '.join(str(random.randint(1, limit)) for r in range(rolls))
         await ctx.send(result)
-
-    #kick command
-    @commands.command(description='kick a user from the minecraft servers')
-    async def kick(self, ctx, ign: str):
-        """Admin: kick a user from the minecraft servers."""
-        if ctx.message.channel.id != DATA["adminChannelID"]:
-            print("ignored command, not from admin")
-            return
-        await ctx.send('One sec, got to put my boots on!')
-
+    
     #ban command
     @commands.command(description='ban a user from the minecraft servers')
     async def ban(self, ctx, ign: str):
         """Admin: ban a user from the minecraft servers."""
-        if ctx.message.channel.id != DATA["adminChannelID"]:
-            print("ignored command, not from admin")
+        if not self.client.is_allowed(ctx):
             return
         await ctx.send('Deploying ban hammer!')
     
@@ -88,3 +78,7 @@ class CommandsCog(commands.Cog):
     @commands.command(description='list the server reboot schedules')
     async def schedule(self, ctx):
         """list the server reboot schedules"""
+        message = "Server reboot schedule \n"
+        for line in self.client.schedule():
+            message += "{server} : {time} \n".format(server=line[0], time=line[1])
+        await ctx.send(message)

@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 import discord
 import random
 import json
@@ -5,6 +7,7 @@ import re
 from commands_cog import CommandsCog
 from discord.ext import commands
 from config import CONFIG, DATA
+from crontab import CronTab
 
 
 
@@ -27,6 +30,17 @@ class eggBot(commands.Bot):
         print(self.user.name)
         print(self.user.id)
         print('------')
+
+    def schedule(self):
+        my_cron =  CronTab(user=True)
+        schedule = [(job.command.split()[3], job.description()) for job in my_cron if "restart" in job.command ]
+        return schedule
+
+    def is_allowed(self,ctx):
+        if ctx.message.channel.id != DATA["adminChannelID"]:
+            print("ignored command, not from admin")
+            return False
+        return True
 
 
 
