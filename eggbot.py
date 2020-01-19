@@ -51,11 +51,11 @@ class eggBot(commands.Bot):
             async with session.post(f'{data["endpoint"]}/v1/token/',data={"id": data["id"], "password": data["password"]}) as resp:
                 if resp.status >= 400:
                     return None
-                result = resp.json()
+                result = await resp.json()
                 return result["data"]["token"]
 
     #get fry meta data
-    async def get_fry_meta(self,serverObj):
+    async def get_fry_meta(self,list):
         try:
             params = {'Authorization': 'Bearer '+serverObj['token']}
             async with aiohttp.ClientSession() as session:

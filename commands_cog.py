@@ -6,6 +6,7 @@ import requests
 import asyncio
 from discord.ext import commands
 from config import DATA, save_data
+from loguru import logger
 
 
 class CommandsCog(commands.Cog):
@@ -46,32 +47,31 @@ class CommandsCog(commands.Cog):
 
         if host is not None and user is not None and password is not None:
             try:
+                host = host.strip('/')
                 data={"endpoint":host,"id":user,"password":password}
                 token = await self.client.get_token(data)
                 await ctx.send("Token aquired!")
-            except Exception as inst:
-                print(type(inst))    # the exception instance
-                print(inst.args)     # arguments stored in .args
-                print(inst)
+            except:
                 await ctx.send("something went wrong, check the url, username and password")
             try:
-                params = {'Authorization': 'Bearer '+token}
+                headers = {'Authorization': 'Bearer '+token}
                 async with aiohttp.ClientSession() as session:
-                    async with session.get(host+'/v1/meta', params=params) as response:
+                    async with session.get(host+'/v1/meta', headers=headers) as response:
                         result =  await response.json()
-                        name = result['name']
-            except:
+                        name = result['data']['name']
+                        await ctx.send(name+" Found!")
+            except Exception as inst:
+                logger.exception(inst)
+                await ctx.send("Failed to get server name, check server meta data.")
                 return False
 
             try:
-                DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password}
-                DATA["server_list"][name]["token"] = token
+                DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password, 'token':token}
             except KeyError:
                 DATA["server_list"] = {}
-                DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password}
-                DATA["server_list"][name]["token"] = token 
+                DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password, 'token':token}
             save_data()
-            await ctx.send("Saved!")
+            await ctx.send("Added succesfully!")
         else:
             await ctx.send(" !set argument is not valid. usage !add <servername> <host> <user> <password>. exemple !add https://localhost:4321 admin 12345abc")
 
@@ -91,6 +91,7 @@ class CommandsCog(commands.Cog):
                     del DATA["server_list"][key]
                     save_data()
                     await ctx.send(key+" as been removed!")
+                    logger.warning(key+" deleted from config")
                 except KeyError:
                     await ctx.send(key+" is not in the config.")
             else:
@@ -109,8 +110,9 @@ class CommandsCog(commands.Cog):
         else:
             #send complete server list info
             message = "Server List: \n"
-            for serverData in DATA["server_list"]:
-                status,serverName,packName,version = self.client.get_fry_meta(serverData)
+            metaData = await self.client.get_fry_meta(DATA["server_list"])
+            for serverData in metaData:
+                
                 message += status+":"+serverName+"\n"
                 message += packname+" ("+packversion+")"
             await ctx.send(message)
