@@ -9,10 +9,10 @@ from config import DATA, save_data
 from loguru import logger
 
 
-class CommandsCog(commands.Cog):
+class CommandsCog(commands.Cog, name='Commands'):
     def __init__(self, client):
         self.client = client
-
+    
     #set command to change urls and messages
     @commands.command(description='Set or change the apply url, connection url and welcome message of the concierge', rest_is_raw=True)
     async def set(self, ctx, arg, *,text):
@@ -21,20 +21,26 @@ class CommandsCog(commands.Cog):
         set_command_dict = {"applyurl":"applyUrl","connecturl":"connectUrl", "joinmessage":"joinMessage"  }
         
         if not self.client.is_allowed(ctx):
+            await ctx.message.add_reaction('⛔')
             return
-
-        arg = set_command_dict.get(arg.lower(), None)        
-        if arg is not None and text is not None:
-            DATA[arg] = text.strip()
-            save_data()
-            await ctx.send("Saved!")
-        else:
-            await ctx.send(" !set argument is not valid. usage !set <applyUrl|connectUrl|joinMessage> <text>.")
+        try:
+            arg = set_command_dict.get(arg.lower(), None)        
+            if arg is not None and text is not None:
+                DATA[arg] = text.strip()
+                save_data()
+                await ctx.send("Saved!")
+            else:
+                await ctx.send(" !set argument is not valid. usage !set <applyUrl|connectUrl|joinMessage> <text>.")
+        except Exception as inst:
+                logger.exception(inst)
+                await ctx.send("you are missing something, try again!")
+                return
     
     #setmeta command to store meta data in fry
-    @commands.command(description='Set or change fry server information like packname, packversion. Done individually to the @server bot', rest_is_raw=True)
-    async def setmeta(self, ctx, server, key, meta):
-        """Set or change fry server information like packname, packversion. Done individually to the @server bot. usage @server !set <packname|version> <text> """
+    @commands.command(description='Not a command. Setting meta is done individually to the @server bot.', rest_is_raw=True)
+    async def setmeta(self, ctx):
+        """Setting meta is done individually to the @server bot. usage @server !meta <set|get> <packname|version> <text> """
+        await ctx.send("Setting meta is done individually to the @server bot. usage @server !meta <set|get> <packname|version> <text>")
         
 
     #add command is to add a server.
@@ -43,6 +49,7 @@ class CommandsCog(commands.Cog):
         """Admin: Setup a server. The server name will be what ever you setup in the fry config. usage !add <host> <user> <password>"""
 
         if not self.client.is_allowed(ctx):
+            await ctx.message.add_reaction('⛔')
             return        
 
         if host is not None and user is not None and password is not None:
@@ -51,8 +58,10 @@ class CommandsCog(commands.Cog):
                 data={"endpoint":host,"id":user,"password":password}
                 token = await self.client.get_token(data)
                 await ctx.send("Token aquired!")
-            except:
+            except Exception as inst:
+                logger.exception(inst)
                 await ctx.send("something went wrong, check the url, username and password")
+                return
             try:
                 headers = {'Authorization': 'Bearer '+token}
                 async with aiohttp.ClientSession() as session:
@@ -62,8 +71,8 @@ class CommandsCog(commands.Cog):
                         await ctx.send(name+" Found!")
             except Exception as inst:
                 logger.exception(inst)
-                await ctx.send("Failed to get server name, check server meta data.")
-                return False
+                await ctx.send("Failed to get server name, set fry's meta data.")
+                return
 
             try:
                 DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password, 'token':token}
@@ -81,6 +90,7 @@ class CommandsCog(commands.Cog):
         """Admin: Remove a server from eggbot. Use the server name as displayed in !s command. usage !remove <servername>"""
 
         if not self.client.is_allowed(ctx):
+            await ctx.message.add_reaction('⛔')
             return        
 
         if key is not None:
@@ -106,16 +116,42 @@ class CommandsCog(commands.Cog):
 
         if arg is not None:
             #get arg(server) info details a send that
-            await ctx.send(arg+' info: blah blah blah')
+            info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
+            try:
+                embed=discord.Embed(title="Detailed Status", color=0x00ff00)
+                embed.add_field(name="Game", value=info["game"], inline=False)
+                embed.add_field(name="Status", value=info["status"], inline=False)
+                embed.add_field(name="Pack", value=info["pack_name"], inline=False)
+                embed.add_field(name="Pack Version", value=info["pack_version"], inline=False)
+                embed.add_field(name="Pack Description", value=info["pack_description"], inline=False)
+                embed.add_field(name="Pack URL", value=info["pack_url"], inline=False)
+
+            except:
+                await ctx.send("Please check server meta data for "+info["name"])
         else:
             #send complete server list info
-            message = "Server List: \n"
-            metaData = await self.client.get_fry_meta(DATA["server_list"])
-            for serverData in metaData:
+            methods = []
+            for name, server in DATA["server_list"].items():
+                methods.append(self.client.get_fry_meta(name,server))
+            
+            data = await asyncio.gather(*methods)
+
+            #displaying data
+            embed=discord.Embed(title="Servers", color=0x00ff00)
+            for info in data:
+                try:
+                    if info["status"] == "RUNNING":
+                        embed.add_field(name="🟢 "+info["name"], value=info["pack_name"]+" ("+info["pack_version"]+")", inline=False)
+                    elif info["status"] == "STARTING":
+                        embed.add_field(name="🟡 "+info["name"], value=info["pack_name"]+" ("+info["pack_version"]+")", inline=False)
+                    else:
+                        embed.add_field(name="🔴 "+info["name"], value=info["pack_name"]+" ("+info["pack_version"]+")", inline=False)
+                except:
+                    await ctx.send("Please check server meta data for "+info["name"])
+            
+        await ctx.send(embed=embed)
                 
-                message += status+":"+serverName+"\n"
-                message += packname+" ("+packversion+")"
-            await ctx.send(message)
+
 
     #howto command
     @commands.command(description='Get URL to connection intructions')
@@ -138,14 +174,6 @@ class CommandsCog(commands.Cog):
 
         result = ', '.join(str(random.randint(1, limit)) for r in range(rolls))
         await ctx.send(result)
-    
-    #ban command
-    @commands.command(description='ban a user from the minecraft servers')
-    async def ban(self, ctx, ign: str):
-        """Admin: ban a user from the minecraft servers."""
-        if not self.client.is_allowed(ctx):
-            return
-        await ctx.send('Deploying ban hammer!')
     
     #schedule
     @commands.command(description='list the server reboot schedules')
