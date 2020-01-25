@@ -41,14 +41,6 @@ class eggBot(commands.Bot):
         schedule = [(job.command.split()[3], job.description()) for job in my_cron if "restart" in job.command ]
         return schedule
 
-    #check if command comes from admin channel
-    def is_allowed(self,ctx):
-        if ctx.message.channel.id != DATA["adminChannelID"]:
-            logger.warning("ignored command, not from admin")
-            return False
-        else:
-            return True
-
     async def get_token(self,data):
         async with aiohttp.ClientSession() as session:
             async with session.post(f'{data["endpoint"]}/v1/token/',data={"id": data["id"], "password": data["password"]}) as resp:

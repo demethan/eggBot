@@ -62,9 +62,20 @@ class CommandsCog(commands.Cog, name='Commands'):
 
 
     #connection info command
-    @commands.command(description='Get connection intructions')
+    @commands.command(description='Get connection instructions')
     async def c(self, ctx):
-        """Get URL to connection intructions"""
+        """server connection info"""
+        methods = []
+            for name, server in DATA["server_list"].items():
+                methods.append(self.client.get_fry_meta(name,server))
+        
+        data = await asyncio.gather(*methods)
+         #displaying data
+            embed=discord.Embed(title="Servers", color=color)
+            for info in data:
+                embed.add_field(name="Hostname:", value =z)
+
+
         author = ctx.message.author
         channel = await author.create_dm()
         await channel.send(DATA["connectUrl"])
@@ -86,7 +97,7 @@ class CommandsCog(commands.Cog, name='Commands'):
     #schedule
     @commands.command(description='list the server reboot schedules')
     async def schedule(self, ctx):
-        """list the server reboot schedules"""
+        """List the server reboot schedules"""
         message=""
         for line in self.client.schedule():
             message += "{server} : {time} \n".format(server=line[0], time=line[1])

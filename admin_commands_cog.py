@@ -8,28 +8,27 @@ from discord.ext import commands
 from config import DATA, save_data
 from loguru import logger
 from discord.utils import get
-from addon import admin_only
+
+#get admins
+def admin_only():
+    async def predicate(ctx):
+        return ctx.channel.id == DATA["adminChannelID"]
+    return commands.check(predicate)
 
 class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     def __init__(self, client):
         self.client = client
-        self.cog_check(admin_only)
 
-    async def admin_only(self, ctx: commands.Context):
-        return ctx.channel.id in self.app.config["plugins"]["discord"]["admin-channels"]
-    #set command to change urls and messages
     @commands.command(description='Set or change the apply url, connection url and welcome message of the concierge', rest_is_raw=True)
+    @admin_only()
     async def set(self, ctx, arg, *,text):
-        """Admin: Change the apply url, connection url or the Welcome message. usage !set <applyUrl|connectUrl|joinMessage> <text>. """
+        """Admin: Change the apply url, connection url or the Welcome message. usage !set <applyUrl|connectUrl|joinMessage> <text>. For the Join message you have two parameter {member} {applyUrl} to work into your message. """
         
         set_command_dict = {"applyurl":"applyUrl","connecturl":"connectUrl", "joinmessage":"joinMessage"  }
         
-        if not self.client.is_allowed(ctx):
-            await ctx.message.add_reaction('⛔')
-            return
         try:
             arg = set_command_dict.get(arg.lower(), None)        
-            if arg is not None and text is not None:
+            if arg is not None and text !="":
                 DATA[arg] = text.strip()
                 save_data()
                 await ctx.send("Saved!")
@@ -42,6 +41,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
 
     #setmeta command to store meta data in fry
     @commands.command(description='Not a command. Setting meta is done individually to the @server bot.', rest_is_raw=True)
+    @admin_only()
     async def setmeta(self, ctx):
         """Setting meta is done individually to the @server bot. usage @server !meta <set|get> <packname|version> <text>"""
         with open('meta_instruction.txt', 'r') as file:
@@ -52,12 +52,9 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
 
     #add command is to add a server.
     @commands.command(description='Add a server to eggbot.', rest_is_raw=True)
+    @admin_only()
     async def add(self, ctx, host, user, password):
-        """Admin: Setup a server. The server name will be what ever you setup in the fry config. usage !add <host> <user> <password>"""
-
-        if not self.client.is_allowed(ctx):
-            await ctx.message.add_reaction('⛔')
-            return        
+        """Admin: Setup a server. The server name will be whatever you setup in the fry config. usage !add <host> <user> <password> The name meta value of the FryBot has to be set first. !setmeta for more info."""
 
         if host is not None and user is not None and password is not None:
             try:
@@ -78,7 +75,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                         await ctx.send(name+" Found!")
             except Exception as inst:
                 logger.exception(inst)
-                await ctx.send("Failed to get server name, set fry's meta data.")
+                await ctx.send("Failed to get server name, Please set Fry's name in the meta data with the Fry commands. Ex. @FryBot !meta set name <FryBot> ")
                 return
 
             try:
@@ -89,16 +86,13 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             save_data()
             await ctx.send("Added succesfully!")
         else:
-            await ctx.send(" !set argument is not valid. usage !add <servername> <host> <user> <password>. exemple !add https://localhost:4321 admin 12345abc")
+            await ctx.send(" !set argument is not valid. usage !add <servername> <host> <user> <password>. Ex: !add https://localhost:4321 admin 12345abc")
 
     #remove command is to add a server.
     @commands.command(description='remove a server from eggbot.', rest_is_raw=True)
+    @admin_only()
     async def remove(self, ctx, key):
         """Admin: Remove a server from eggbot. Use the server name as displayed in !s command. usage !remove <servername>"""
-
-        if not self.client.is_allowed(ctx):
-            await ctx.message.add_reaction('⛔')
-            return        
 
         if key is not None:
             await ctx.send(key+ " will be removed from the list, confirm with YES ")
