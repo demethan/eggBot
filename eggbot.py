@@ -71,7 +71,9 @@ class eggBot(commands.Bot):
     async def on_command_error(self, ctx, error):
         logger.error(error)
         embed=discord.Embed(Title="Error:", color=0x00ff00)
-        if error.param._name == "arg":
+        if error.original.args[0] == 111:
+            message = "! Fry for that server doesn't appear to be running"
+        elif error.param._name == "arg":
             message = "!"+ctx.command.name+" requires an argument. Type !help to get a list"
         elif error.param._name == "key":
             message = "!"+ctx.command.name+" requires the server name without the @.  Ex. MyFry \n"

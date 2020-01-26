@@ -27,20 +27,24 @@ class CommandsCog(commands.Cog, name='Commands'):
                 arg = arg.replace("@","")
             #get arg(server) info details a send that
             info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
-            try:
-                embed=discord.Embed(title="Detailed Status", color=0x00ff00)
-                embed.set_image(url=info["pack_image"])
-                embed.add_field(name="Game:", value=info["game"], inline=False)
-                embed.add_field(name="Status:", value=info["status"], inline=False)
-                embed.add_field(name="Pack:", value=info["pack_name"], inline=False)
-                embed.add_field(name="Pack Version:", value=info["pack_version"], inline=False)
-                embed.add_field(name="Pack Description:", value=info["pack_description"], inline=False)
-                embed.add_field(name="Pack URL:", value=info["pack_url"], inline=False)
-
-            except:
-                await ctx.send("Please check server meta data for "+info["name"])
+            message ="```asciidoc\n"
+            message+="= "+info["name"]+" =\n\n"
+            message+="== Pack Information == \n"
+            message+="Pack Name :: "+info.get("pack_name","")+"\n"
+            message+="Pack Version :: "+info.get("pack_version","")+"\n"
+            message+="Pack Url :: "+info.get("pack_url","")+"\n"
+            message+="Pack Launcher :: "+info.get("pack_launcher","")+"\n"
+            message+="Pack Description :: "+info.get("pack_long_description","")+"\n\n"
+            message+="== Connection Info == \n"
+            message+="Server Adresse :: "+info.get("server_adress","")+"\n\n"
+            message+="== Game Info == \n"
+            message+="Game :: "+info.get("game","")+"\n"
+            message+="Game Version :: "+info.get("game_version","")+"\n"
+            message+="Game Url :: "+info.get("game_url","")+"\n"
+            message +="```"
+            
             author = ctx.message.author
-            await author.send(embed=embed)
+            await author.send(message)
             await ctx.message.add_reaction('👍')
         else:
             #send complete server list info
@@ -54,12 +58,15 @@ class CommandsCog(commands.Cog, name='Commands'):
             embed=discord.Embed(title="Servers", color=color)
             for info in data:
                 try:
+                    message = info["pack_name"]+" ("+info["pack_version"]+") \n"
+                    for player in info["players_online"]:
+                        message += player+", "
                     if info["status"] == "RUNNING":
-                        embed.add_field(name="🟢 "+info["name"], value=info["pack_name"]+" ("+info["pack_version"]+")", inline=False)
+                        embed.add_field(name="🟢 "+info["name"], value=message, inline=False)
                     elif info["status"] == "STARTING":
-                        embed.add_field(name="🟡 "+info["name"], value=info["pack_name"]+" ("+info["pack_version"]+")", inline=False)
+                        embed.add_field(name="🟡 "+info["name"], value=message, inline=False)
                     else:
-                        embed.add_field(name="🔴 "+info["name"], value=info["pack_name"]+" ("+info["pack_version"]+")", inline=False)
+                        embed.add_field(name="🔴 "+info["name"], value=message, inline=False)
                 except:
                     embed.add_field(name="‼ "+info["name"], value="Meta data is missing!", inline=False)
             embed.set_footer(text="!s <servername> for more details")

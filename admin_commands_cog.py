@@ -8,6 +8,7 @@ from discord.ext import commands
 from config import DATA, save_data
 from loguru import logger
 from discord.utils import get
+color=0x00ff00
 
 #get admins
 def admin_only():
@@ -18,6 +19,29 @@ def admin_only():
 class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     def __init__(self, client):
         self.client = client
+
+    @commands.command(description='Set or change the apply url, connection url and welcome message of the concierge', rest_is_raw=True)
+    @admin_only()
+    async def getmeta(self,ctx,arg):
+        pattern = re.compile("<@!*[0-9]*>")
+        if pattern.match(arg):
+            user = get(self.client.get_all_members(), id= int(re.sub(r'[<@!>]', '', arg)))
+            arg = user.name
+        else:
+            arg = arg.replace("@","")
+        info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
+        message = ""
+        for key in info:
+            if key == "players_online":
+                continue
+            value = info[key]
+            message += key+" : "+value+"\n"
+        embed=discord.Embed(title="Meta Data",color=color)
+        embed.add_field(name="💬",value=message)
+        embed.set_footer(text="!setmeta for more info.")
+        await ctx.send(embed=embed)
+        
+    
 
     @commands.command(description='Set or change the apply url, connection url and welcome message of the concierge', rest_is_raw=True)
     @admin_only()
@@ -43,7 +67,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     @commands.command(description='Not a command. Setting meta is done individually to the @server bot.', rest_is_raw=True)
     @admin_only()
     async def setmeta(self, ctx):
-        """Setting meta is done individually to the @server bot. usage @server !meta <set|get> <packname|version> <text>"""
+        """Setting meta is done individually to the @server bot. More Info here!"""
         with open('meta_instruction.txt', 'r') as file:
             message = file.read()
         embed=discord.Embed(title="Detailed Instruction", color=0x00ff00)

@@ -1,17 +1,17 @@
 Setting meta is done individually to the @server bot. usage @server !meta <set|get> <packname|version> <text>
 
 Available labels are:
-<name>: Name of the Bot (get Only)
+<name>: Name of the Bot (get Only). It is set on !add command.
 <game>: The game type or name Ex: Minecraft 
-<game_version>: version of the game
-<game_url>: url to game
-<sever_hostname>: dns name to connect to the game server Ex: name.domain.com
-<server_address>: Ip address of to connect to. Ex. 1.1.1.1
-<server_port>: Port to connect to.  Ex:  65535
-<pack_name>: Name of the pack.
-<pack_version>: Version of the pack.
-<pack_url>: Url to the pack site.
-<pack_launcher>: prefered launcher of the pack
-<pack_long_description>: Full description of the pack
+<game_version>: version of the game Ex: 1.12.2
+<game_url>: url to game Ex: http://minecraft.net
+<sever_hostname>: redirect domain name to connect to the server Ex: name.domain.com
+<server_address>: Ip address to connect to. Tipically the host ip.  Ex. 1.1.1.1
+<server_port>: Port to connect to.  Ex: 65535
+<pack_name>: Name of the pack. Ex: My Fun pack
+<pack_version>: Version of the pack. Ex: 1.0
+<pack_url>: Url to the pack site. Ex: http://myfunpack.com
+<pack_launcher>: prefered launcher of the pack.
+<pack_long_description>: Full description of the pack.
 <pack_description>: Short description of the pack
 <pack_image>: url link to pack image.
