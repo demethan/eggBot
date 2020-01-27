@@ -36,7 +36,8 @@ class CommandsCog(commands.Cog, name='Commands'):
             message+="Pack Launcher :: "+info.get("pack_launcher","")+"\n"
             message+="Pack Description :: "+info.get("pack_long_description","")+"\n\n"
             message+="== Connection Info == \n"
-            message+="Server Adresse :: "+info.get("server_adress","")+"\n\n"
+            message+="Server Adresse :: "+info.get("server_adress","")+"\n"
+            message+="Users Online :: "+", ".join(info["players_online"])+"\n\n"
             message+="== Game Info == \n"
             message+="Game :: "+info.get("game","")+"\n"
             message+="Game Version :: "+info.get("game_version","")+"\n"
@@ -59,8 +60,7 @@ class CommandsCog(commands.Cog, name='Commands'):
             for info in data:
                 try:
                     message = info["pack_name"]+" ("+info["pack_version"]+") \n"
-                    for player in info["players_online"]:
-                        message += player+", "
+                    message += "Online: "+", ".join(info["players_online"])
                     if info["status"] == "RUNNING":
                         embed.add_field(name="🟢 "+info["name"], value=message, inline=False)
                     elif info["status"] == "STARTING":

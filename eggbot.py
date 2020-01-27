@@ -71,15 +71,15 @@ class eggBot(commands.Bot):
     async def on_command_error(self, ctx, error):
         logger.error(error)
         embed=discord.Embed(Title="Error:", color=0x00ff00)
-        if error.original.args[0] == 111:
+        if error.get(original.args[0],"") == 111:
             message = "! Fry for that server doesn't appear to be running"
-        elif error.param._name == "arg":
+        if error.param._name == "arg":
             message = "!"+ctx.command.name+" requires an argument. Type !help to get a list"
-        elif error.param._name == "key":
+        if error.param._name == "key":
             message = "!"+ctx.command.name+" requires the server name without the @.  Ex. MyFry \n"
             message += "possible server name: "
             embed.add_field(name="severs",value = list(DATA["server_list"].keys()), inline=False)
-        elif error.param._name == "host":
+        if error.param._name == "host":
             message = "!"+ctx.command.name+" is missing the host argument. Type !help to get a list"
             
         if message is not None:
