@@ -24,14 +24,17 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     @admin_only()
     async def getmeta(self,ctx,arg):
         pattern = re.compile("<@!*[0-9]*>")
-        if pattern.match(arg):
+        if pattern.match(arg): #to conver discord id for server name if user call command with @<server>
             user = get(self.client.get_all_members(), id= int(re.sub(r'[<@!>]', '', arg)))
             arg = user.name
         else:
             arg = arg.replace("@","")
         info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
+        if not info:#function return false if it can't connect to api
+            await ctx.send("Fry doens't seem to be running. No connection!")
+            return
         message = ""
-        for key in info:
+        for key in info:#display all meta data except players online.
             if key == "players_online":
                 continue
             value = info[key]
@@ -42,7 +45,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         await ctx.send(embed=embed)
         
     
-
+    #set things for bot to repond to support channel. 
     @commands.command(description='Set or change the apply url, connection url and welcome message of the concierge', rest_is_raw=True)
     @admin_only()
     async def set(self, ctx, arg, *,text):
@@ -63,7 +66,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 await ctx.send("you are missing something, try again!")
                 return
 
-    #setmeta command to store meta data in fry
+    #display how to for setting the FryBot's meta data.
     @commands.command(description='Not a command. Setting meta is done individually to the @server bot.', rest_is_raw=True)
     @admin_only()
     async def setmeta(self, ctx):
@@ -81,7 +84,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         """Admin: Setup a server. The server name will be whatever you setup in the fry config. usage !add <host> <user> <password> The name meta value of the FryBot has to be set first. !setmeta for more info."""
 
         if host is not None and user is not None and password is not None:
-            try:
+            try: #tries to connect to the api site of the frybot.
                 host = host.strip('/')
                 data={"endpoint":host,"id":user,"password":password}
                 token = await self.client.get_token(data)
@@ -90,7 +93,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 logger.exception(inst)
                 await ctx.send("something went wrong, check the url, username and password")
                 return
-            try:
+            try:#uses the token to get the name from the meta data.
                 headers = {'Authorization': 'Bearer '+token}
                 async with aiohttp.ClientSession() as session:
                     async with session.get(host+'/v1/meta', headers=headers) as response:
@@ -112,7 +115,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         else:
             await ctx.send(" !set argument is not valid. usage !add <servername> <host> <user> <password>. Ex: !add https://localhost:4321 admin 12345abc")
 
-    #remove command is to add a server.
+    #remove command is to remove a server from the DATA.
     @commands.command(description='remove a server from eggbot.', rest_is_raw=True)
     @admin_only()
     async def remove(self, ctx, key):

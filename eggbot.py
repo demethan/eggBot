@@ -52,27 +52,28 @@ class eggBot(commands.Bot):
     #get fry meta data
     async def get_fry_meta(self,name,serverObj):
         headers = {'Authorization': 'Bearer '+serverObj['token']}
-        async with aiohttp.ClientSession() as session:
-            async with session.get(serverObj["endpoint"]+'/v1/meta', headers=headers) as resp:
-                if resp.status >= 400:
-                    logger.info('getting new token for '+name)
-                    serverObj['token'] = DATA["server_list"][name]["token"] = await self.get_token(serverObj)
-                    save_data()
-                    headers = {'Authorization': 'Bearer '+serverObj['token']}
-                    async with aiohttp.ClientSession() as session:
-                        async with session.get(serverObj["endpoint"]+'/v1/meta', headers=headers) as resp:
-                            result =  await resp.json()
-                            return result["data"]
-                else:
-                    result =  await resp.json()
-                    return result["data"]
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(serverObj["endpoint"]+'/v1/meta', headers=headers) as resp:
+                    if resp.status >= 400:
+                        logger.info('getting new token for '+name)
+                        serverObj['token'] = DATA["server_list"][name]["token"] = await self.get_token(serverObj)
+                        save_data()
+                        headers = {'Authorization': 'Bearer '+serverObj['token']}
+                        async with aiohttp.ClientSession() as session:
+                            async with session.get(serverObj["endpoint"]+'/v1/meta', headers=headers) as resp:
+                                result =  await resp.json()
+                                return result["data"]
+                    else:
+                        result =  await resp.json()
+                        return result["data"]
+        except:
+            return False
     
     #error handling
     async def on_command_error(self, ctx, error):
         logger.error(error)
         embed=discord.Embed(Title="Error:", color=0x00ff00)
-        if error.get(original.args[0],"") == 111:
-            message = "! Fry for that server doesn't appear to be running"
         if error.param._name == "arg":
             message = "!"+ctx.command.name+" requires an argument. Type !help to get a list"
         if error.param._name == "key":
