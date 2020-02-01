@@ -10,7 +10,7 @@ discord-py = "*"
 python-crontab = "*"
 cron-descriptor = "*"
 croniter = "*"
-fryingpan = {editable = true,git = "ssh://git@github.com:segfaulted/fryingpan2.git"}
+loguru = "*"
 
 [requires]
 python_version = "3.7"
