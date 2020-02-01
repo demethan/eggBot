@@ -5,7 +5,6 @@ import random
 import json
 import re
 import aiohttp
-import requests
 import asyncio
 from commands_cog import CommandsCog
 from admin_commands_cog import AdminCommandsCog

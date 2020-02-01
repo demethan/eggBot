@@ -2,7 +2,6 @@ import discord
 import random
 import re
 import aiohttp
-import requests
 import asyncio
 from discord.ext import commands
 from config import DATA, save_data
