@@ -3,10 +3,13 @@ import random
 import re
 import aiohttp
 import asyncio
+import humanize
 from discord.ext import commands
 from config import DATA, save_data
 from loguru import logger
 from discord.utils import get
+from datetime import datetime
+
 color=0x00ff00
 
 class CommandsCog(commands.Cog, name='Commands'):
@@ -70,9 +73,52 @@ class CommandsCog(commands.Cog, name='Commands'):
                             embed.add_field(name="🔴 "+info["name"], value=message, inline=False)
                     except:
                         embed.add_field(name="‼ "+info["name"], value="Meta data is missing!", inline=False)
-            embed.set_footer(text="!s <servername> for more details")
+            embed.set_footer(text="!s <servername> for more details, !o for detail online.")
             await ctx.send(embed=embed)
                 
+    #status command, s for short, because people are lazy.
+    @commands.command(description='Who was last on the servers')
+    async def ls(self, ctx):
+        """Whos was last on the servers"""
+        message="```asciidoc\n"
+        servers = DATA["server_list"]
+        for server in servers:
+            message += "= "+server+" =\n"
+            try:
+                for player in DATA["server_list"][server]["players"]:
+                    if player is None:
+                        pass
+                    else:
+                        timegone = datetime.utcnow() - datetime.strptime(DATA["server_list"][server]["players"][player]["login_time"],"%Y-%m-%d %H:%M:%S.%f")
+                        message += player + " :: "+ str(humanize.naturaltime(timegone)) +". \n"
+            except:
+                pass
+        message +="```"
+        await ctx.send(message)
+
+
+    #status command, s for short, because people are lazy.
+    @commands.command(description='who is currently online')
+    async def o(self, ctx):
+        """Who is currently online and for how long."""
+        methods = []
+        for name, server in DATA["server_list"].items():
+            methods.append(self.client.get_fry_meta(name,server))
+            
+        data = await asyncio.gather(*methods)
+        data.sort(key=lambda s: "" if not s else s.get("name"))
+
+        message ="```asciidoc\n"
+        for info in data:
+            if info:
+                message += "= "+info["name"]+" =\n"
+                try:
+                    for player in info["players_online"]:
+                        message += "     "+player+" :: "+str(info["players_online"][player]["duration"])+" min\n"
+                except:
+                    pass        
+        message += "```"
+        await ctx.send(message)
 
 
     #connection info command
