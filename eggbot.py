@@ -69,6 +69,16 @@ class eggBot(commands.Bot):
         except:
             return False
     
+    #on user login store in DATA
+    async def on_message(self,message):
+        if self.user.id != message.author.id and message.author.name in DATA["server_list"].keys():
+            if "has joined the server" in message.content:
+                info = await self.get_fry_meta(message.author.name,DATA["server_list"][message.author.name])
+                DATA["server_list"][message.author.name]["players"] = info["players_online"]
+                save_data()
+        else:
+            await self.process_commands(message)
+
     #error handling
     async def on_command_error(self, ctx, error):
         logger.error(error)
