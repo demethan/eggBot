@@ -11,6 +11,7 @@ python-crontab = "*"
 cron-descriptor = "*"
 croniter = "*"
 loguru = "*"
+humanize = "*"
 
 [requires]
 python_version = "3.7"
