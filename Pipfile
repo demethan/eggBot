@@ -12,6 +12,7 @@ cron-descriptor = "*"
 croniter = "*"
 loguru = "*"
 humanize = "*"
+discord = "*"
 
 [requires]
 python_version = "3.7"
