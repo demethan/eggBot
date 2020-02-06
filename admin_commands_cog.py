@@ -18,6 +18,12 @@ def admin_only():
 class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     def __init__(self, client):
         self.client = client
+    
+    @commands.command()
+    @admin_only()
+    async def mc(self,ctx,arg):
+        await ctx.send("Do I look like Cakebot?")
+
 
     @commands.command(description='Set or change the apply url, connection url and welcome message of the concierge', rest_is_raw=True)
     @admin_only()
