@@ -48,9 +48,9 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     @commands.command(description='Set or change the apply url, connection url and welcome message of the concierge', rest_is_raw=True)
     @admin_only()
     async def set(self, ctx, arg, *,text):
-        """Admin: Change the apply url, connection url or the Welcome message. usage !set <applyUrl|connectUrl|joinMessage> <text>. For the Join message you have two parameter {member} {applyUrl} to work into your message. """
+        """Admin: Change the apply url or the Welcome message. usage !set <applyUrl|joinMessage> <text>. For the Join message you have two parameter {member} {applyUrl} to work into your message. """
         
-        set_command_dict = {"applyurl":"applyUrl","connecturl":"connectUrl", "joinmessage":"joinMessage"  }
+        set_command_dict = {"applyurl":"applyUrl", "joinmessage":"joinMessage"  }
         
         try:
             arg = set_command_dict.get(arg.lower(), None)        
