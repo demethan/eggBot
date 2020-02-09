@@ -137,8 +137,8 @@ class CommandsCog(commands.Cog, name='Commands'):
             info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
             embed=discord.Embed(title="Detailed Connection Info", color=color)
             embed.add_field(name="\u200b", value = "***"+info["name"]+":***",inline=False)
-            embed.add_field(name="✅ By redirect name:", value =info["server_hostname"], inline=False)
-            embed.add_field(name="🆗 By hostname:", value ="breakfastcraft.com:"+info["server_port"],inline=False)
+            embed.add_field(name="✅ By redirect name:", value =info["server_address"], inline=False)
+            embed.add_field(name="🆗 By hostname:", value =info["server_hostname"]+info["server_port"],inline=False)
             embed.add_field(name="⚠  By IP:", value =info["server_ip"]+":"+info["server_port"], inline=False)
             
         else:

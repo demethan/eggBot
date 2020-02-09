@@ -25,9 +25,10 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         await ctx.send("Do I look like Cakebot?")
 
 
-    @commands.command(description='Set or change the apply url, connection url and welcome message of the concierge', rest_is_raw=True)
+    @commands.command(description='Get all the meta data of a specific server.', rest_is_raw=True)
     @admin_only()
     async def getmeta(self,ctx,arg):
+        """Admin: Get all the meta data of a specific server"""
         pattern = re.compile("<@!*[0-9]*>")
         if pattern.match(arg): #to conver discord id for server name if user call command with @<server>
             user = get(self.client.get_all_members(), id= int(re.sub(r'[<@!>]', '', arg)))
