@@ -173,6 +173,8 @@ class CommandsCog(commands.Cog, name='Commands'):
         """Rolls a dice in NdN format."""
         try:
             rolls, limit = map(int, dice.split('d'))
+            if rolls > 8 or limit > 100:
+                await ctx.send("This is Dungeon and Dragons, not the lotary!")
         except Exception:
             await ctx.send('Format has to be in NdN!')
             return
