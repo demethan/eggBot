@@ -21,7 +21,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     
     @commands.command()
     @admin_only()
-    async def mc(self,ctx,arg):
+    async def mc(self,ctx):
         await ctx.send("Do I look like Cakebot?")
 
 
