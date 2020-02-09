@@ -158,7 +158,7 @@ class CommandsCog(commands.Cog, name='Commands'):
                 #embed.add_field(name="~~                                                          ~~",value='\u200b', inline=False)
                 embed.add_field(name="\u200b", value = "***"+info["name"]+":***",inline=False)
                 try:
-                    embed.add_field(name="✅ By redirect name:", value =info["server_hostname"], inline=False)
+                    embed.add_field(name="✅ By redirect name:", value =info["server_address"], inline=False)
                 except:
                     embed.add_field(name="‼ Sorry!", value="Info missing! Contact an admin!", inline=False)
             embed.set_footer(text = "!c <servername> for more details")
