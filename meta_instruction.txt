@@ -5,8 +5,8 @@ Available labels are:
 <game>: The game type or name Ex: Minecraft 
 <game_version>: version of the game Ex: 1.12.2
 <game_url>: url to game Ex: http://minecraft.net
-<server_address>: redirect domain name to connect to the server Ex: name.domain.com
-<sever_hostname>: host name of the server. Ex: breakfastcraft.com
+<server_address>: host name of the server. Ex: breakfastcraft.com
+<sever_hostname>: redirect domain name to connect to the server Ex: name.domain.com
 <server_ip>: Ip address to connect to. Tipically the host ip.  Ex. 1.1.1.1
 <server_port>: Port to connect to.  Ex: 65535
 <pack_name>: Name of the pack. Ex: My Fun pack
