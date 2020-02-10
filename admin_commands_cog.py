@@ -30,14 +30,14 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     async def getmeta(self,ctx,arg):
         """Admin: Get all the meta data of a specific server"""
         pattern = re.compile("<@!*[0-9]*>")
-        if pattern.match(arg): #to conver discord id for server name if user call command with @<server>
+        if pattern.match(arg): #to convert discord id for server name if user call command with @<server>
             user = get(self.client.get_all_members(), id= int(re.sub(r'[<@!>]', '', arg)))
             arg = user.name
         else:
             arg = arg.replace("@","")
         info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
         if not info:#function return false if it can't connect to api
-            await ctx.send("Fry doens't seem to be running. No connection!")
+            await ctx.send("Fry doesn't seem to be running. No connection!")
             return
         message = ""
         for key in info:#display all meta data except players online.
@@ -51,7 +51,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         await ctx.send(embed=embed)
         
     
-    #set things for bot to repond to support channel. 
+    #set things for bot to respond to support channel. 
     @commands.command(description='Set or change the apply url, connection url and welcome message of the concierge', rest_is_raw=True)
     @admin_only()
     async def set(self, ctx, arg, *,text):
@@ -94,7 +94,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 host = host.strip('/')
                 data={"endpoint":host,"id":user,"password":password}
                 token = await self.client.get_token(data)
-                await ctx.send("Token aquired!")
+                await ctx.send("Token acquired!")
             except Exception as inst:
                 logger.exception(inst)
                 await ctx.send("something went wrong, check the url, username and password")

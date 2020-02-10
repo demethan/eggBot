@@ -12,7 +12,7 @@ Available labels are:
 <pack_name>: Name of the pack. Ex: My Fun pack
 <pack_version>: Version of the pack. Ex: 1.0
 <pack_url>: Url to the pack site. Ex: http://myfunpack.com
-<pack_launcher>: prefered launcher of the pack.
+<pack_launcher>: preferred launcher of the pack.
 <pack_long_description>: Full description of the pack.
 <pack_description>: Short description of the pack
 <pack_image>: url link to pack image.

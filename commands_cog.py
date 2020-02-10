@@ -39,7 +39,7 @@ class CommandsCog(commands.Cog, name='Commands'):
                 message+="Pack Launcher :: "+info.get("pack_launcher","")+"\n"
                 message+="Pack Description :: "+info.get("pack_long_description","")+"\n\n"
                 message+="== Connection Info == \n"
-                message+="Server Adresse :: "+info.get("server_address","")+"\n"
+                message+="Server Address :: "+info.get("server_address","")+"\n"
                 message+="Users Online :: "+", ".join(info["players_online"])+"\n\n"
                 message+="== Game Info == \n"
                 message+="Game :: "+info.get("game","")+"\n"
@@ -149,7 +149,7 @@ class CommandsCog(commands.Cog, name='Commands'):
             data = await asyncio.gather(*methods)
             data.sort(key=lambda s: s["name"])
             message = "In your game, click add server. In the server connection, set the name of the server you want to connect. \n"
-            message += "Then you can pick one of the three ways to connect to the server. Prefered method is by ridirect name."
+            message += "Then you can pick one of the three ways to connect to the server. Preferred method is by redirect name."
 
             embed=discord.Embed(title="Connection Info", color=color)
             embed.add_field(name="Instructions:",value=message)
@@ -174,7 +174,7 @@ class CommandsCog(commands.Cog, name='Commands'):
         try:
             rolls, limit = map(int, dice.split('d'))
             if rolls > 8 or limit > 100:
-                await ctx.send("This is Dungeon and Dragons, not the lottery!")
+                await ctx.send("This is Dungeons and Dragons, not the lottery!")
                 return
         except Exception:
             await ctx.send('Format has to be in NdN!')
