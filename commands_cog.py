@@ -39,7 +39,7 @@ class CommandsCog(commands.Cog, name='Commands'):
                 message+="Pack Launcher :: "+info.get("pack_launcher","")+"\n"
                 message+="Pack Description :: "+info.get("pack_long_description","")+"\n\n"
                 message+="== Connection Info == \n"
-                message+="Server Address :: "+info.get("server_address","")+"\n"
+                message+="Server Address :: "+info.get("server_host","")+"\n"
                 message+="Users Online :: "+", ".join(info["players_online"])+"\n\n"
                 message+="== Game Info == \n"
                 message+="Game :: "+info.get("game","")+"\n"
