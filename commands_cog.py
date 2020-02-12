@@ -24,9 +24,9 @@ class CommandsCog(commands.Cog, name='Commands'):
             pattern = re.compile("<@!*[0-9]*>")
             if pattern.match(arg):
                 user = get(self.client.get_all_members(), id= int(re.sub(r'[<@!>]', '', arg)))
-                arg = user.name
+                arg = user.name.lower()
             else:
-                arg = arg.replace("@","")
+                arg = (arg.replace("@","")).lower()
             #get arg(server) info details a send that
             info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
             if info:
@@ -131,9 +131,9 @@ class CommandsCog(commands.Cog, name='Commands'):
             pattern = re.compile("<@!*[0-9]*>")
             if pattern.match(arg):
                 user = get(self.client.get_all_members(), id= int(re.sub(r'[<@!>]', '', arg)))
-                arg = user.name
+                arg = user.name.lower()
             else:
-                arg = arg.replace("@","")
+                arg = (arg.replace("@","")).lower()
             info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
             embed=discord.Embed(title="Detailed Connection Info", color=color)
             embed.add_field(name="\u200b", value = "***"+info["name"]+":***",inline=False)

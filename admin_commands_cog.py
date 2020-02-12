@@ -32,9 +32,9 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         pattern = re.compile("<@!*[0-9]*>")
         if pattern.match(arg): #to convert discord id for server name if user call command with @<server>
             user = get(self.client.get_all_members(), id= int(re.sub(r'[<@!>]', '', arg)))
-            arg = user.name
+            arg = user.name.lower()
         else:
-            arg = arg.replace("@","")
+            arg = arg.replace("@","").lower()
         info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
         if not info:#function return false if it can't connect to api
             await ctx.send("Fry doesn't seem to be running. No connection!")
@@ -105,6 +105,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                     async with session.get(host+'/v1/meta', headers=headers) as response:
                         result =  await response.json()
                         name = result['data']['name']
+                        name = name.replace(" ","").lower()
                         await ctx.send(name+" Found!")
             except Exception as inst:
                 logger.exception(inst)
@@ -117,7 +118,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 DATA["server_list"] = {}
                 DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password, 'token':token}
             save_data()
-            await ctx.send("Added succesfully!")
+            await ctx.send("Added successfully !")
         else:
             await ctx.send(" !set argument is not valid. usage !add <servername> <host> <user> <password>. Ex: !add https://localhost:4321 admin 12345abc")
 
@@ -128,6 +129,12 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         """Admin: Remove a server from eggbot. Use the server name as displayed in !s command. usage !remove <servername>"""
 
         if key is not None:
+            pattern = re.compile("<@!*[0-9]*>")
+            if pattern.match(key): #to convert discord id for server name if user call command with @<server>
+                user = get(self.client.get_all_members(), id= int(re.sub(r'[<@!>]', '', key)))
+                key = user.name.lower()
+            else:
+                key = key.replace("@","").lower()
             await ctx.send(key+ " will be removed from the list, confirm with YES ")
             msg = await self.client.wait_for('message')
             if msg.content=="YES" and ctx.message.author == msg.author:
