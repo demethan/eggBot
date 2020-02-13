@@ -113,7 +113,7 @@ class CommandsCog(commands.Cog, name='Commands'):
         message ="```asciidoc\n"
         for info in data:
             if info:
-                message += "= "+info["name"]+" =\n"
+                message += "= "+info["name"].strip()+" =\n"
                 try:
                     for player in info["players_online"]:
                         message += "     "+player+" :: "+str(info["players_online"][player]["duration"])+" min\n"
