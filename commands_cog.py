@@ -193,5 +193,5 @@ class CommandsCog(commands.Cog, name='Commands'):
         for line in self.client.schedule():
             message += "{server} : {time} \n".format(server=line[0], time=line[1])
         embed=discord.Embed(title="Reboot Schedule", color=color )
-        embed.add_field(name="⏲",value=message,inline=False)
+        embed.add_field(name="⏲(GMT-5)",value=message,inline=False)
         await ctx.send(embed=embed)
