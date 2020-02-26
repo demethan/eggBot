@@ -20,6 +20,7 @@ class eggBot(commands.Bot):
         super().__init__(*args, **kwargs)
         self.add_cog(CommandsCog(self))
         self.add_cog(AdminCommandsCog(self))
+        asyncio.ensure_future(self.recuring_task())
         
     # support channel welcome concierge
     async def on_member_join(self, member):
@@ -69,15 +70,27 @@ class eggBot(commands.Bot):
         except:
             return False
     
-    #on user login store in DATA
-    async def on_message(self,message):
-        if self.user.id != message.author.id and message.author.name in DATA["server_list"].keys():
-            if "has joined the server" in message.content:
-                info = await self.get_fry_meta(message.author.name,DATA["server_list"][message.author.name])
-                DATA["server_list"][message.author.name]["players"] = info["players_online"]
-                save_data()
-        else:
-            await self.process_commands(message)
+    async def store_online_users(self):
+        methods = []
+        for name, server in DATA["server_list"].items():
+            methods.append(self.get_fry_meta(name,server))
+            
+        data = await asyncio.gather(*methods)
+        data.sort(key=lambda s: "" if not s else s.get("name"))
+        for info in data:
+            if info:
+                server = info["name"].strip()
+                if info["players_online"] != None:
+                    DATA["server_list"][server]["players"] = info["players_online"]
+        logger.info("Storing online players...")
+        save_data()
+
+    
+    async def recuring_task(self):
+        while True:
+            await asyncio.sleep(300)
+            await self.store_online_users()
+
 
     #error handling
     async def on_command_error(self, ctx, error):
