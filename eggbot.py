@@ -33,7 +33,7 @@ class eggBot(commands.Bot):
         if self.flag :
             await channel.send("Fresh meat to process!")
             self.flag=False
-            asyncio.ensure_future(self.timer(300))
+            asyncio.ensure_future(self.timer(300)) #cooldown of the admin notifcation. 
     
     async def timer(self,time):
         await asyncio.sleep(time)
