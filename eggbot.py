@@ -20,6 +20,7 @@ class eggBot(commands.Bot):
         super().__init__(*args, **kwargs)
         self.add_cog(CommandsCog(self))
         self.add_cog(AdminCommandsCog(self))
+        self.flag = True
         asyncio.ensure_future(self.recuring_task())
         
     # support channel welcome concierge
@@ -29,7 +30,15 @@ class eggBot(commands.Bot):
             channel = await member.create_dm()
             await channel.send(DATA["joinMessage"].format(member=member.mention,applyUrl=DATA["applyUrl"]))
         channel = self.get_channel(DATA["adminChannelID"])
-        await channel.send("Fresh meat to process!")
+        if self.flag :
+            await channel.send("Fresh meat to process!")
+            self.flag=False
+            asyncio.ensure_future(self.timer(300))
+    
+    async def timer(self,time):
+        await asyncio.sleep(time)
+        self.flag = True
+
 
 
     #startup connection to discord
@@ -88,7 +97,7 @@ class eggBot(commands.Bot):
     
     async def recuring_task(self):
         while True:
-            await asyncio.sleep(300)
+            await asyncio.sleep(300) #every 5 min get the user online meta data.
             await self.store_online_users()
 
 
