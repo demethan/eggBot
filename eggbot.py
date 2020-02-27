@@ -79,6 +79,7 @@ class eggBot(commands.Bot):
         except:
             return False
     
+    #gets current player online meta data from fry and store it to json for !ls command use.
     async def store_online_users(self):
         methods = []
         for name, server in DATA["server_list"].items():
@@ -88,13 +89,13 @@ class eggBot(commands.Bot):
         data.sort(key=lambda s: "" if not s else s.get("name"))
         for info in data:
             if info:
-                server = info["name"].strip()
-                if info["players_online"] != None:
+                server = info["name"].strip().lower()
+                if info["players_online"].__len__() > 0:
                     DATA["server_list"][server]["players"] = info["players_online"]
         logger.info("Storing online players...")
         save_data()
 
-    
+    #gets started in class __init__
     async def recuring_task(self):
         while True:
             await asyncio.sleep(300) #every 5 min get the user online meta data.

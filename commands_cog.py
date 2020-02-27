@@ -85,7 +85,7 @@ class CommandsCog(commands.Cog, name='Commands'):
         message="```asciidoc\n"
         servers = DATA["server_list"]
         for server in servers:
-            message += "= "+server+" =\n"
+            message += "= "+server.upper()+" =\n"
             try:
                 for player in DATA["server_list"][server]["players"]:
                     if player is None:
