@@ -50,31 +50,53 @@ class eggBot(commands.Bot):
         schedule = [(job.command.split()[3], job.description()) for job in my_cron if "restart" in job.command ]
         return schedule
 
-    async def get_token(self,data):
+    async def get_token_by_auth(self, host, user, password):
         async with aiohttp.ClientSession() as session:
-            async with session.post(f'{data["endpoint"]}/v1/token/',data={"id": data["id"], "password": data["password"]}) as resp:
+            async with session.post(f'{host}/v1/token/',data={"id": user, "password": password}) as resp:
                 if resp.status >= 400:
+                    logger.debug(await resp.text())
                     return None
-                result = await resp.json()
-                return result["data"]["token"]
+                return await resp.json()
+
+    async def get_token(self,name, force=False):
+        if DATA["server_list"].get(name) is None:
+            return None
+
+        if force is True or DATA["server_list"][name].get('token') is None:
+            result = await self.get_token_by_auth(DATA["sever_list"][name]["host"], DATA["server_list"][name]["id"], DATA["server_list"][name]["password"])
+            if not result:
+                return None
+
+            DATA["server_list"][name]["token"] = result["data"]["token"]
+            save_data()
+            logger.debug(DATA["server_list"][name]["token"])
+        return DATA["server_list"][name]["token"]
+
 
     #get fry meta data
     async def get_fry_meta(self,name,serverObj):
-        headers = {'Authorization': 'Bearer '+serverObj['token']}
+        logger.debug(f"geting meta for {name}")
+        token = await self.get_token(name)
+        headers = {}
+        if token is not None:
+            headers['Authorization'] = 'Bearer '+ token
         try:
             async with aiohttp.ClientSession() as session:
-                async with session.get(serverObj["endpoint"]+'/v1/meta', headers=headers) as resp:
+                async with session.get(DATA["server_list"][name]["endpoint"]+'/v1/meta', headers=headers) as resp:
                     if resp.status >= 400:
+                        logger.debug(resp.status)
+                        logger.debug(await resp.text())
                         logger.info('getting new token for '+name)
-                        serverObj['token'] = DATA["server_list"][name]["token"] = await self.get_token(serverObj)
-                        save_data()
-                        headers = {'Authorization': 'Bearer '+serverObj['token']}
+                        headers = {'Authorization': 'Bearer ' + await self.get_token(name, False) }
+
                         async with aiohttp.ClientSession() as session:
-                            async with session.get(serverObj["endpoint"]+'/v1/meta', headers=headers) as resp:
+                            async with session.get(DATA["server_list"][name]["endpoint"]+'/v1/meta', headers=headers) as resp:
                                 result =  await resp.json()
+                                logger.debug(f"1 {result['data']}")
                                 return result["data"]
                     else:
                         result =  await resp.json()
+                        logger.debug(result["data"])
                         return result["data"]
         except:
             return False
@@ -105,19 +127,23 @@ class eggBot(commands.Bot):
     #error handling
     async def on_command_error(self, ctx, error):
         logger.error(error)
-        embed=discord.Embed(Title="Error:", color=0x00ff00)
-        if error.param._name == "arg":
-            message = "!"+ctx.command.name+" requires an argument. Type !help to get a list"
-        if error.param._name == "key":
-            message = "!"+ctx.command.name+" requires the server name without the @.  Ex. MyFry \n"
-            message += "possible server name: "
-            embed.add_field(name="severs",value = list(DATA["server_list"].keys()), inline=False)
-        if error.param._name == "host":
-            message = "!"+ctx.command.name+" is missing the host argument. Type !help to get a list"
-            
-        if message is not None:
-            embed.add_field(name="⚠",value = message, inline=False)
-            await ctx.send(embed=embed)
+        logger.error(ctx)
+        try:
+            embed=discord.Embed(Title="Error:", color=0x00ff00)
+            if error.param._name == "arg":
+                message = "!"+ctx.command.name+" requires an argument. Type !help to get a list"
+            if error.param._name == "key":
+                message = "!"+ctx.command.name+" requires the server name without the @.  Ex. MyFry \n"
+                message += "possible server name: "
+                embed.add_field(name="servers",value = list(DATA["server_list"].keys()), inline=False)
+            if error.param._name == "host":
+                message = "!"+ctx.command.name+" is missing the host argument. Type !help to get a list"
+                
+            if message is not None:
+                embed.add_field(name="⚠",value = message, inline=False)
+                await ctx.send(embed=embed)
+        except:
+            pass
 
 
 

@@ -88,19 +88,22 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     @admin_only()
     async def add(self, ctx, host, user, password):
         """Admin: Setup a server. The server name will be whatever you setup in the fry config. usage !add <host> <user> <password> The name meta value of the FryBot has to be set first. !setmeta for more info."""
-
+        logger.debug(host)
+        logger.debug(user)
+        logger.debug(password)
         if host is not None and user is not None and password is not None:
             try: #tries to connect to the api site of the frybot.
                 host = host.strip('/')
-                data={"endpoint":host,"id":user,"password":password}
-                token = await self.client.get_token(data)
-                await ctx.send("Token acquired!")
+                token = await self.client.get_token_by_auth(host, user, password)
+                if token is not None:
+                    await ctx.send("Token acquired!")
+                    await ctx.send(str(token["data"]["token"]))
             except Exception as inst:
                 logger.exception(inst)
                 await ctx.send("something went wrong, check the url, username and password")
                 return
             try:#uses the token to get the name from the meta data.
-                headers = {'Authorization': 'Bearer '+token}
+                headers = {'Authorization': 'Bearer '+token["data"]["token"]}
                 async with aiohttp.ClientSession() as session:
                     async with session.get(host+'/v1/meta', headers=headers) as response:
                         result =  await response.json()
@@ -113,10 +116,10 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 return
 
             try:
-                DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password, 'token':token}
+                DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password, 'token':token["data"]["token"]}
             except KeyError:
                 DATA["server_list"] = {}
-                DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password, 'token':token}
+                DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password, 'token':token["data"]["token"]}
             save_data()
             await ctx.send("Added successfully !")
         else:
