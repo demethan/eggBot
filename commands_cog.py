@@ -167,23 +167,6 @@ class CommandsCog(commands.Cog, name='Commands'):
         author = ctx.message.author
         await author.send(embed=embed)
         await ctx.message.add_reaction('👍')
-        
-
-    #roll command
-    @commands.command(description='Roll a dice of your choice.')
-    async def roll(self, ctx, dice: str):
-        """Rolls a dice in NdN format."""
-        try:
-            rolls, limit = map(int, dice.split('d'))
-            if rolls > 8 or limit > 100:
-                await ctx.send("This is Dungeons and Dragons, not the lottery!")
-                return
-        except Exception:
-            await ctx.send('Format has to be in NdN!')
-            return
-
-        result = ', '.join(str(random.randint(1, limit)) for r in range(rolls))
-        await ctx.send(result)
     
     #schedule
     @commands.command(description='list the server reboot schedules')

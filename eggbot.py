@@ -8,6 +8,7 @@ import aiohttp
 import asyncio
 from commands_cog import CommandsCog
 from admin_commands_cog import AdminCommandsCog
+from support_commands_cog import SupportCommandsCog
 from discord.ext import commands
 from config import CONFIG, DATA
 from config import DATA, save_data
@@ -18,9 +19,6 @@ from loguru import logger
 class eggBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.add_cog(CommandsCog(self))
-        self.add_cog(AdminCommandsCog(self))
-        self.flag = True
         asyncio.ensure_future(self.recuring_task())
         
     # support channel welcome concierge
@@ -29,11 +27,7 @@ class eggBot(commands.Bot):
         if guild.system_channel is None:
             channel = await member.create_dm()
             await channel.send(DATA["joinMessage"].format(member=member.mention,applyUrl=DATA["applyUrl"]))
-        channel = self.get_channel(DATA["adminChannelID"])
-        if self.flag :
-            await channel.send("Fresh meat to process!")
-            self.flag=False
-            asyncio.ensure_future(self.timer(300)) #cooldown of the admin notifcation. 
+        
     
     async def timer(self,time):
         await asyncio.sleep(time)
@@ -43,6 +37,11 @@ class eggBot(commands.Bot):
 
     #startup connection to discord
     async def on_ready(self):
+        await self.wait_until_ready()  # Ensure that the bot is ready before adding the cogs
+        await self.add_cog(CommandsCog(self))
+        await self.add_cog(AdminCommandsCog(self))
+        await self.add_cog(SupportCommandsCog(self))
+        await self.recuring_task()
         logger.info('Logged on as {0}!'.format(self.user))
 
     def schedule(self):
@@ -122,6 +121,10 @@ class eggBot(commands.Bot):
         while True:
             await asyncio.sleep(300) #every 5 min get the user online meta data.
             await self.store_online_users()
+    
+    """ async def on_message(self):
+        print(message.content)
+        await bot.process_commands(message) """
 
 
     #error handling
@@ -147,8 +150,10 @@ class eggBot(commands.Bot):
 
 
 
-
-bot = eggBot("!")
+intents = discord.Intents.all()
+intents.message_content = True
+intents.members = True
+bot = eggBot(command_prefix='!',intents=intents)
 bot.run(CONFIG["token"])
 
 
