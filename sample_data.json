@@ -4,5 +4,8 @@
     "connectUrl": "https://www.breakfastcraft.com/page/connection-information/",
     "joinMessage": "Welcome {member} to BreakfastCraft. If you haven't done so already, apply at {applyUrl}. I also contain information, use !help for more info.",
     "applyUrl": "https://www.breakfastcraft.com/page/apply/",
-    "server_list": {}
+    "server_list": {},
+    "fryBotRoleID": 123456789,
+    "memberRoleID": 123456789,
+    "reboot_schedule": {}
 }

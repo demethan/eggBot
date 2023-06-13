@@ -7,6 +7,8 @@ from discord.ext import commands
 from config import DATA, save_data
 from loguru import logger
 from discord.utils import get
+from datetime import datetime, timedelta
+import pytz
 color=0x00ff00
 
 #get admins
@@ -18,11 +20,31 @@ def admin_only():
 class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     def __init__(self, client):
         self.client = client
+        self.client.applications = {}
     
     @commands.command()
     @admin_only()
     async def mc(self,ctx):
         await ctx.send("Do I look like Cakebot?")
+
+    @commands.command(description='Update dictionary values for IDs.', rest_is_raw=True)
+    @admin_only()
+    async def updateids(self, ctx, key, value):
+        """Admin: Update dictionary values for IDs. Usage: !updateids <key> <value>"""
+        if key.lower() == "supportchannelid":
+            DATA["supportChannelID"] = int(value)
+        elif key.lower() == "adminchannelid":
+            DATA["adminChannelID"] = int(value)
+        elif key.lower() == "memberroleid":
+            DATA["memberRoleID"] = int(value)
+        elif key.lower() == "frybotroleid":
+            DATA["fryBotRoleID"] = int(value)
+        else:
+            await ctx.send("Invalid key. Available keys: supportChannelID, adminChannelID, memberRoleID, fryBotRoleID")
+            return
+
+        save_data()
+        await ctx.send("Dictionary value updated successfully!")
 
 
     @commands.command(description='Get all the meta data of a specific server.', rest_is_raw=True)
@@ -151,4 +173,51 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             else:
                 await ctx.send("removal cancelled!")
     
-    
+    # set_schedule command
+    @commands.command(description='Set the server reboot schedule')
+    @admin_only()
+    async def set_schedule(self, ctx, server: str, time: str, frequency: str, timezone: str):
+        """Set the server reboot schedule"""
+        # Convert time to a valid time format
+        try:
+            reboot_time = datetime.strptime(time, '%H:%M:%S').time()
+        except ValueError:
+            await ctx.send("Invalid time format. Please use the format: HH:MM:SS")
+            return
+
+        # Get the current date
+        now = datetime.now().date()
+
+        # Create the datetime object with the current date and specified time
+        reboot_datetime = datetime.combine(now, reboot_time)
+
+        # Convert the reboot_datetime to UTC
+        utc_timezone = pytz.timezone('UTC')
+        reboot_datetime_utc = reboot_datetime.astimezone(utc_timezone)
+
+        # Convert the provided timezone string to a timezone object
+        try:
+            author_timezone = pytz.timezone(timezone)
+        except pytz.UnknownTimeZoneError:
+            await ctx.send("Invalid timezone. Please provide a valid timezone.")
+            return
+
+        # Convert reboot time to the user's timezone for display
+        reboot_datetime_local = reboot_datetime_utc.astimezone(author_timezone)
+
+        # Ensure that the 'reboot_schedule' key exists in the DATA dictionary
+        if 'reboot_schedule' not in DATA:
+            DATA['reboot_schedule'] = {}
+
+        # Convert reboot_datetime_utc to string representation
+        reboot_time_str = reboot_datetime_utc.isoformat()
+
+        # Store the schedule in the DATA dictionary
+        DATA['reboot_schedule'][server] = {
+            'time': reboot_time_str,
+            'frequency': frequency.lower(),
+            'timezone': timezone
+        }
+        save_data()  # Save the updated schedule to the data file
+
+        await ctx.send(f"The reboot schedule for {server} has been set to {reboot_datetime_local.strftime('%H:%M:%S')} ({frequency}) in the {timezone} timezone.")

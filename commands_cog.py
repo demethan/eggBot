@@ -8,7 +8,8 @@ from discord.ext import commands
 from config import DATA, save_data
 from loguru import logger
 from discord.utils import get
-from datetime import datetime
+from datetime import datetime, timedelta
+import pytz
 
 color=0x00ff00
 
@@ -168,13 +169,21 @@ class CommandsCog(commands.Cog, name='Commands'):
         await author.send(embed=embed)
         await ctx.message.add_reaction('👍')
     
-    #schedule
-    @commands.command(description='list the server reboot schedules')
-    async def schedule(self, ctx):
+    # schedule command
+    @commands.command(description='List the server reboot schedules\n\nUsage: !schedule <timezone>\n\nExample: !schedule America/New_York')
+    async def schedule(self, ctx, timezone: str):
         """List the server reboot schedules"""
-        message=""
-        for line in self.client.schedule():
-            message += "{server} : {time} \n".format(server=line[0], time=line[1])
-        embed=discord.Embed(title="Reboot Schedule", color=color )
-        embed.add_field(name="⏲(GMT-5)",value=message,inline=False)
+        message = ""
+        output_timezone = pytz.timezone(timezone)
+
+        for server, schedule_info in DATA['reboot_schedule'].items():
+            reboot_time_str = schedule_info['time']
+            reboot_time_utc = datetime.fromisoformat(reboot_time_str).astimezone(pytz.UTC)
+            reboot_time_local = reboot_time_utc.astimezone(output_timezone)
+            formatted_time = reboot_time_local.strftime('%Y-%m-%d %H:%M:%S')
+
+            message += f"{server}: {formatted_time} ({schedule_info['frequency']})\n"
+
+        embed = discord.Embed(title="Reboot Schedule", color=color)
+        embed.add_field(name="Server Reboot Times", value=message, inline=False)
         await ctx.send(embed=embed)
