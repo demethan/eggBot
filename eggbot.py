@@ -12,7 +12,6 @@ from support_commands_cog import SupportCommandsCog
 from discord.ext import commands
 from config import CONFIG, DATA
 from config import DATA, save_data
-from crontab import CronTab
 from loguru import logger
 
 
@@ -43,11 +42,6 @@ class eggBot(commands.Bot):
         await self.add_cog(SupportCommandsCog(self))
         await self.recuring_task()
         logger.info('Logged on as {0}!'.format(self.user))
-
-    def schedule(self):
-        my_cron =  CronTab(user=True)
-        schedule = [(job.command.split()[3], job.description()) for job in my_cron if "restart" in job.command ]
-        return schedule
 
     async def get_token_by_auth(self, host, user, password):
         async with aiohttp.ClientSession() as session:

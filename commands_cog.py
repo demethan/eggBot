@@ -176,11 +176,15 @@ class CommandsCog(commands.Cog, name='Commands'):
         message = ""
         output_timezone = pytz.timezone(timezone)
 
+        if timezone is None:
+            await ctx.send("Please provide the timezone argument. Example: !schedule America/New_York")
+            return
+
         for server, schedule_info in DATA['reboot_schedule'].items():
             reboot_time_str = schedule_info['time']
             reboot_time_utc = datetime.fromisoformat(reboot_time_str).astimezone(pytz.UTC)
             reboot_time_local = reboot_time_utc.astimezone(output_timezone)
-            formatted_time = reboot_time_local.strftime('%Y-%m-%d %H:%M:%S')
+            formatted_time = reboot_time_local.strftime('%H:%M:%S')
 
             message += f"{server}: {formatted_time} ({schedule_info['frequency']})\n"
 
