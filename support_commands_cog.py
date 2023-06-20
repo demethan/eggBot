@@ -111,7 +111,7 @@ class SupportCommandsCog(commands.Cog, name='SupportCommands'):
         if len(source) == 0:
             await ctx.author.send('Invalid source. Please provide a source.')
 
-        admin_channel = discord.utils.get(ctx.guild.text_channels, name='admin')
+        admin_channel = discord.utils.get(ctx.guild.text_channels, id=int(DATA["adminChannelID"]))
         if not admin_channel:
             await ctx.send('Admin channel not found.')
             return
