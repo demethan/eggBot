@@ -6,6 +6,7 @@ import json
 import re
 import aiohttp
 import asyncio
+import datetime
 from commands_cog import CommandsCog
 from admin_commands_cog import AdminCommandsCog
 from support_commands_cog import SupportCommandsCog
@@ -98,15 +99,35 @@ class eggBot(commands.Bot):
     async def store_online_users(self):
         methods = []
         for name, server in DATA["server_list"].items():
-            methods.append(self.get_fry_meta(name,server))
+            methods.append(self.get_fry_meta(name, server))
             
         data = await asyncio.gather(*methods)
         data.sort(key=lambda s: "" if not s else s.get("name"))
+        
         for info in data:
             if info:
                 server = info["name"].strip().lower()
                 if info["players_online"].__len__() > 0:
-                    DATA["server_list"][server]["players"] = info["players_online"]
+                    players_online = info["players_online"]
+                    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # Update each player's information and last seen timestamp
+                    for player in players_online:
+                        player_key = player.strip().lower()
+                        player_data = {"last_seen": current_time}
+                        
+                        # Update or create player's information
+                        if player_key in DATA.get("players", {}):
+                            DATA["players"][player_key].update(player_data)
+                        else:
+                            DATA["players"][player_key] = player_data
+                        
+                        # Update the server's players list
+                        if "players" not in DATA["server_list"][server]:
+                            DATA["server_list"][server]["players"] = [player]
+                        else:
+                            DATA["server_list"][server]["players"].append(player)
+                    
         logger.info("Storing online players...")
         save_data()
 

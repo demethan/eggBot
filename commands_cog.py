@@ -79,28 +79,35 @@ class CommandsCog(commands.Cog, name='Commands'):
             embed.set_footer(text="!s <servername> for more details, !o for detail online.")
             await ctx.send(embed=embed)
                 
-    #status command, s for short, because people are lazy.
+    #last seen commands
     @commands.command(description='Who was last on the servers')
-    async def ls(self, ctx):
-        """Whos was last on the servers"""
-        message="```asciidoc\n"
-        servers = DATA["server_list"]
-        for server in servers:
-            message += "= "+server.upper()+" =\n"
-            try:
-                for player in DATA["server_list"][server]["players"]:
-                    if player is None:
-                        pass
-                    else:
-                        timegone = datetime.utcnow() - datetime.strptime(DATA["server_list"][server]["players"][player]["login_time"],"%Y-%m-%d %H:%M:%S.%f")
-                        message += player + " :: "+ str(humanize.naturaltime(timegone)) +". \n"
-            except:
-                pass
-        message +="```"
+    async def ls(self, ctx, username: str = None):
+        """Who was last on the servers"""
+        message = "```asciidoc\n"
+        servers = sorted(DATA["server_list"].keys())
+        
+        if username is None:
+            for server in servers:
+                message += "= " + server.upper() + " =\n"
+                try:
+                    for player in DATA["server_list"][server].get("players", []):
+                        if player is None:
+                            pass
+                        else:
+                            last_seen = DATA["players"].get(player.strip().lower(), {}).get("last_seen", "Unknown")
+                            message += player + " :: " + str(last_seen) + ".\n"
+                except:
+                    pass
+        else:
+            username_key = username.strip().lower()
+            last_seen = DATA["players"].get(username_key, {}).get("last_seen", "Unknown")
+            message += f"{username} :: {str(last_seen)}\n"
+        
+        message += "```"
         await ctx.send(message)
 
 
-    #status command, s for short, because people are lazy.
+    #get online users
     @commands.command(description='who is currently online')
     async def o(self, ctx):
         """Who is currently online and for how long."""
@@ -191,3 +198,22 @@ class CommandsCog(commands.Cog, name='Commands'):
         embed = discord.Embed(title="Reboot Schedule", color=color)
         embed.add_field(name="Server Reboot Times", value=message, inline=False)
         await ctx.send(embed=embed)
+
+    @commands.command(description='Rolls dice for DND games')
+    async def roll(self, ctx, dice: str):
+        try:
+            num_dice, dice_sides = map(int, dice.split('d'))
+            valid_sides = [4, 6, 8, 10, 12, 20]
+            max_num_dice = 10  # Adjust this limit as needed
+
+            if num_dice < 1 or num_dice > max_num_dice or dice_sides not in valid_sides:
+                raise ValueError
+
+            rolls = [random.randint(1, dice_sides) for _ in range(num_dice)]
+            total = sum(rolls)
+
+            roll_result = ', '.join(str(roll) for roll in rolls)
+            await ctx.send(f"Rolled {num_dice}d{dice_sides}: {roll_result} (Total: {total})")
+
+        except ValueError:
+            await ctx.send("Invalid input. Please use the format `!roll NdS` where N is the number of dice (max:10) and S is the number of sides on each die (DnD Style).")
