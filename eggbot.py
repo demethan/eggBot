@@ -182,6 +182,8 @@ class eggBot(commands.Bot):
 
         if "server_list" not in DATA or "players" not in DATA:
             await admin_channel.send("WARNING: DATA structure is missing required keys. Check your data.")
+            if "players" not in DATA:
+                DATA["players"] = {}  # Initialize with an empty dictionary
         else:
             await admin_channel.send("DATA validation passed. Bot is ready to run.")
             await bot.change_presence(status=discord.Status.online)

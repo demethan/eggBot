@@ -203,17 +203,29 @@ class CommandsCog(commands.Cog, name='Commands'):
     async def roll(self, ctx, dice: str):
         try:
             num_dice, dice_sides = map(int, dice.split('d'))
-            valid_sides = [4, 6, 8, 10, 12, 20]
-            max_num_dice = 10  # Adjust this limit as needed
+            valid_sides = [4, 6, 8, 10, 12, 20, 100]  # Added 100 for d100
+            max_num_dice = 100  # Adjust this limit as needed
 
             if num_dice < 1 or num_dice > max_num_dice or dice_sides not in valid_sides:
                 raise ValueError
 
-            rolls = [random.randint(1, dice_sides) for _ in range(num_dice)]
+            if dice_sides == 100:
+                # Special case for rolling a d100
+                rolls = [random.randint(1, 100) for _ in range(num_dice)]
+            else:
+                rolls = [random.randint(1, dice_sides) for _ in range(num_dice)]
+            
             total = sum(rolls)
 
-            roll_result = ', '.join(str(roll) for roll in rolls)
+            if num_dice == 2 and dice_sides == 10:
+                # Calculate percentage from 2d10
+                percentage = (rolls[0] * 10) + rolls[1]
+                total += percentage
+                roll_result = f'{rolls[0]} + {rolls[1]} + {percentage}%'
+            else:
+                roll_result = ', '.join(str(roll) for roll in rolls)
+            
             await ctx.send(f"Rolled {num_dice}d{dice_sides}: {roll_result} (Total: {total})")
 
         except ValueError:
-            await ctx.send("Invalid input. Please use the format `!roll NdS` where N is the number of dice (max:10) and S is the number of sides on each die (DnD Style).")
+            await ctx.send(f"Invalid input. Please use the format `!roll NdS` where N is between 1 and {max_num_dice} and S is a valid DND dice side (4, 6, 8, 10, 12, 20, or 100).")
