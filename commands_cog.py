@@ -35,7 +35,7 @@ class CommandsCog(commands.Cog, name='Commands'):
                 message+="= "+info["name"]+" =\n\n"
                 message+="== Pack Information == \n"
                 message+="Pack Name :: "+info.get("pack_name","")+"\n"
-                message+="Pack Version :: "+info.get("pack_version","")+"\n"
+                message+="Pack Version :: "+info.get("pack_version","").lstrip()+"\n"
                 message+="Pack Url :: "+info.get("pack_url","")+"\n"
                 message+="Pack Launcher :: "+info.get("pack_launcher","")+"\n"
                 message+="Pack Description :: "+info.get("pack_long_description","")+"\n\n"
@@ -46,7 +46,7 @@ class CommandsCog(commands.Cog, name='Commands'):
                 message+="Users Online :: "+", ".join(info["players_online"])+"\n\n"
                 message+="== Game Info == \n"
                 message+="Game :: "+info.get("game","")+"\n"
-                message+="Game Version :: "+info.get("game_version","")+"\n"
+                message+="Game Version :: "+info.get("game_version","").lstrip()+"\n"
                 message+="Game Url :: "+info.get("game_url","")+"\n"
                 message +="```"
                 
@@ -66,7 +66,7 @@ class CommandsCog(commands.Cog, name='Commands'):
             for info in data:
                 if info:
                     try:
-                        message = info["pack_name"]+" ("+info["pack_version"]+") \n"
+                        message = info["pack_name"]+" ("+info["pack_version"].lstrip()+") \n"
                         message += "Online: "+", ".join(info["players_online"])
                         if info["status"] == "RUNNING":
                             embed.add_field(name="🟢 "+info["name"], value=message, inline=False)
