@@ -41,6 +41,7 @@ class eggBot(commands.Bot):
         await self.add_cog(CommandsCog(self))
         await self.add_cog(AdminCommandsCog(self))
         await self.add_cog(SupportCommandsCog(self))
+        await self.validate_data()
         await self.recuring_task()
         logger.info('Logged on as {0}!'.format(self.user))
 
@@ -162,6 +163,28 @@ class eggBot(commands.Bot):
                 await ctx.send(embed=embed)
         except:
             pass
+
+    # Define a function to validate DATA and set bot status
+    async def validate_data(self):
+        admin_channel_id = DATA.get("adminChannelID")  # Get admin channel ID from DATA
+
+        if admin_channel_id is None:
+            print("Admin channel ID is not set in DATA. Please provide the correct channel ID.")
+            await bot.change_presence(status=discord.Status.dnd, activity=discord.Game(name="Admin Channel Not found or possible DATA corruption."))
+            return
+
+        admin_channel = bot.get_channel(admin_channel_id)
+
+        if not admin_channel:
+            print("Admin channel not found. Please check the channel ID in DATA.")
+            await bot.change_presence(status=discord.Status.offline)
+            return
+
+        if "server_list" not in DATA or "players" not in DATA:
+            await admin_channel.send("WARNING: DATA structure is missing required keys. Check your data.")
+        else:
+            await admin_channel.send("DATA validation passed. Bot is ready to run.")
+            await bot.change_presence(status=discord.Status.online)
 
 
 
