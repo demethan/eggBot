@@ -82,7 +82,11 @@ class CommandsCog(commands.Cog, name='Commands'):
     #last seen commands
     @commands.command(description='Who was last on the servers')
     async def ls(self, ctx, username: str = None):
-        """Who was last on the servers"""
+        """Shows last seen information for players.
+        Usage:
+        !ls             Show last players on servers.
+        !ls <username>  Show last seen information for a specific player.
+        """
         message = "```asciidoc\n"
         servers = sorted(DATA["server_list"].keys())
         
@@ -199,8 +203,10 @@ class CommandsCog(commands.Cog, name='Commands'):
         embed.add_field(name="Server Reboot Times", value=message, inline=False)
         await ctx.send(embed=embed)
 
-    @commands.command(description='Rolls dice for DND games')
+    @commands.command(brief='Rolls dice for DND games', description='Rolls dice for DND games. Format: !roll NdS')
     async def roll(self, ctx, dice: str):
+        """Rolls dice for DND games
+           !roll NdS where N is between 1 and {max_num_dice} and S is a valid DND dice side (4, 6, 8, 10, 12, 20, or 100)."""
         try:
             num_dice, dice_sides = map(int, dice.split('d'))
             valid_sides = [4, 6, 8, 10, 12, 20, 100]  # Added 100 for d100
