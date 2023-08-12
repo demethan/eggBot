@@ -109,6 +109,7 @@ class eggBot(commands.Bot):
             if info:
                 server = info["name"].strip().lower()
                 if info["players_online"].__len__() > 0:
+                    DATA["server_list"][server]["players"] = info["players_online"]
                     players_online = info["players_online"]
                     current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                     
@@ -116,18 +117,8 @@ class eggBot(commands.Bot):
                     for player in players_online:
                         player_key = player.strip().lower()
                         player_data = {"last_seen": current_time}
+                        DATA["players"][player_key] = player_data
                         
-                        # Update or create player's information
-                        if player_key in DATA.get("players", {}):
-                            DATA["players"][player_key].update(player_data)
-                        else:
-                            DATA["players"][player_key] = player_data
-                        
-                        # Update the server's players list
-                        if "players" not in DATA["server_list"][server]:
-                            DATA["server_list"][server]["players"] = [player]
-                        else:
-                            DATA["server_list"][server]["players"].append(player)
                     
         logger.info("Storing online players...")
         save_data()
