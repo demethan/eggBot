@@ -81,11 +81,11 @@ class CommandsCog(commands.Cog, name='Commands'):
                 
     #last seen commands
     @commands.command(description='Who was last on the servers')
-    async def ls(self, ctx, username: str = None):
+    async def ls(self, ctx, username: str = commands.parameter(default="None", description=":in game name used in minecraft")):
         """Shows last seen information for players.
         Usage:
         !ls             Show last players on servers.
-        !ls <username>  Show last seen information for a specific player.
+        !ls <ign>  Show last seen information for a specific player.
         """
         message = "```asciidoc\n"
         servers = sorted(DATA["server_list"].keys())
@@ -204,9 +204,8 @@ class CommandsCog(commands.Cog, name='Commands'):
         await ctx.send(embed=embed)
 
     @commands.command(brief='Rolls dice for DND games', description='Rolls dice for DND games. Format: !roll NdS')
-    async def roll(self, ctx, dice: str):
-        """Rolls dice for DND games
-           !roll NdS where N is between 1 and {max_num_dice} and S is a valid DND dice side (4, 6, 8, 10, 12, 20, or 100)."""
+    async def roll(self, ctx, dice: str = commands.parameter(default="Input required", description="<NdS> exemple: 3d4")):
+        """Rolls dice for DND games where N is between 1 and 10 and S is a valid DND dice side (4, 6, 8, 10, 12, 20, or 100). Only 1d100 is allowed."""
         try:
             num_dice, dice_sides = map(int, dice.split('d'))
             valid_sides = [4, 6, 8, 10, 12, 20, 100]  # Added 100 for d100
@@ -230,4 +229,4 @@ class CommandsCog(commands.Cog, name='Commands'):
             await ctx.send(f"Rolled {num_dice}d{dice_sides}: {roll_result} (Total: {total})")
 
         except ValueError:
-            await ctx.send(f"Invalid input. Please use the format `!roll NdS` where N is between 1 and {max_num_dice} and S is a valid DND dice side (4, 6, 8, 10, 12, 20, or 100).")
+            await ctx.send(f"Invalid input. Please use the format `!roll NdS` where N is between 1 and {max_num_dice} and S is a valid DND dice side (4, 6, 8, 10, 12, 20, or 100). Only 1d100 is allowed.")
