@@ -90,12 +90,12 @@ class CommandsCog(commands.Cog, name='Commands'):
             for server in servers:
                 message += "= " + server.upper() + " =\n"
                 try:
-                    for player in DATA["server_list"][server].get("players", []):
+                    for player in DATA["server_list"][server]["players"]:
                         if player is None:
                             pass
                         else:
-                            last_seen = DATA["players"].get(player.strip().lower(), {}).get("last_seen", "Unknown")
-                            message += player + " :: " + str(last_seen) + ".\n"
+                            timegone = datetime.utcnow() - datetime.strptime(DATA["server_list"][server]["players"][player]["login_time"],"%Y-%m-%d %H:%M:%S.%f")
+                            message += player + " :: "+ str(humanize.naturaltime(timegone)) +". \n"
                 except:
                     pass
         else:
@@ -204,26 +204,22 @@ class CommandsCog(commands.Cog, name='Commands'):
         try:
             num_dice, dice_sides = map(int, dice.split('d'))
             valid_sides = [4, 6, 8, 10, 12, 20, 100]  # Added 100 for d100
-            max_num_dice = 100  # Adjust this limit as needed
+            max_num_dice = 10  # Adjust this limit as needed
 
             if num_dice < 1 or num_dice > max_num_dice or dice_sides not in valid_sides:
                 raise ValueError
 
-            if dice_sides == 100:
-                # Special case for rolling a d100
-                rolls = [random.randint(1, 100) for _ in range(num_dice)]
-            else:
-                rolls = [random.randint(1, dice_sides) for _ in range(num_dice)]
-            
+            rolls = [random.randint(1, dice_sides) for _ in range(num_dice)]
             total = sum(rolls)
 
+            percentage = 0
             if num_dice == 2 and dice_sides == 10:
-                # Calculate percentage from 2d10
-                percentage = (rolls[0] * 10) + rolls[1]
-                total += percentage
-                roll_result = f'{rolls[0]} + {rolls[1]} + {percentage}%'
-            else:
-                roll_result = ', '.join(str(roll) for roll in rolls)
+                percentage = (rolls[0] * 10) + rolls[1]   
+            elif dice_sides == 100:
+                percentage = rolls[0] 
+            roll_result = ', '.join(str(roll) for roll in rolls)
+            if percentage:
+                roll_result += f' : {percentage}%'
             
             await ctx.send(f"Rolled {num_dice}d{dice_sides}: {roll_result} (Total: {total})")
 
