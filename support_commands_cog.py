@@ -3,12 +3,12 @@ import random
 import re
 import aiohttp
 import asyncio
-import requests
 import time
 from discord.ext import commands
 from config import DATA, save_data
 from loguru import logger
 from discord.utils import get
+from minecraft_api import validate_minecraft_username
 
 color=0x00ff00
 
@@ -20,28 +20,14 @@ class SupportCommandsCog(commands.Cog, name='SupportCommands'):
         self.client = client
 
     async def validate_ign(self, ign):
-        url = f'https://api.mojang.com/users/profiles/minecraft/{ign}'
-
-        for retry in range(MAX_RETRIES):
-            try:
-                response = requests.get(url)
-                if response.status_code == 200:
-                    return True
-                elif response.status_code == 204:
-                    # IGN not found
-                    return False
-                elif response.status_code == 429:
-                    # Rate limit hit
-                    await asyncio.sleep(RATE_LIMIT_WAIT_TIME)
-                    continue
-                else:
-                    return False
-            except requests.RequestException:
-                # Exception occurred during request, retry after a delay
-                await asyncio.sleep(RATE_LIMIT_WAIT_TIME)
-                continue
-
-        return False
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            return await validate_minecraft_username(
+                session,
+                ign,
+                max_retries=MAX_RETRIES,
+                retry_delay=RATE_LIMIT_WAIT_TIME,
+            )
 
 
     @commands.command(description='Apply to be a member.', rest_is_raw=True)
@@ -65,8 +51,10 @@ class SupportCommandsCog(commands.Cog, name='SupportCommands'):
 
             # Validate IGN using Minecraft API
             valid_ign = await self.validate_ign(ign)
-            if valid_ign:
+            if valid_ign is True:
                 break
+            elif valid_ign is None:
+                await ctx.author.send('Minecraft name validation is temporarily unavailable. Please try again shortly.')
             else:
                 await ctx.author.send('Invalid IGN. Please enter a valid Minecraft name.')
 
@@ -172,5 +160,3 @@ class SupportCommandsCog(commands.Cog, name='SupportCommands'):
         except Exception as e:
             logger.error(f"Error while processing reaction: {str(e)}")
             logger.error(f"Error details: {type(e).__name__}, {e.args}")
-
-
