@@ -22,11 +22,6 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         self.client = client
         self.client.applications = {}
     
-    @commands.command()
-    @admin_only()
-    async def mc(self,ctx):
-        await ctx.send("Do I look like Cakebot?")
-
     @commands.command(description='Update dictionary values for IDs.', rest_is_raw=True)
     @admin_only()
     async def updateids(self, ctx, key, value):
