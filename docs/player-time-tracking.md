@@ -13,3 +13,9 @@ Admins with **Manage Roles** can use `!hours` in the admin channel for all curre
 hours, or `!hours <Minecraft IGN>` for one player. Weeks begin Monday at midnight in
 `America/Montreal`. Sessions crossing the week boundary are clipped correctly and
 open sessions count through the report time and are labeled.
+
+Every five minutes, the existing Fry metadata poll is also stored as a server
+observation and reconciled with open sessions. An online player without a Discord join
+starts an `api_derived` session. A missing player is closed only after two consecutive
+successful observations report them absent, limiting false logouts from one empty or
+glitched API response. API reconciliation never duplicates an open Discord session.

@@ -128,6 +128,45 @@ class PlayerTrackingTests(unittest.TestCase):
         self.assertEqual(players[0].server_hours, {"BACON": 4.0})
         self.assertEqual(players[0].open_sessions, 1)
 
+    def test_api_reconciliation_requires_two_absent_snapshots_to_close(self):
+        first = self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={"Demethan": {"duration": 1}},
+            observed_at=datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc),
+        )
+        one_absent = self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={},
+            observed_at=datetime(2026, 8, 2, 12, 5, tzinfo=timezone.utc),
+        )
+        two_absent = self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={},
+            observed_at=datetime(2026, 8, 2, 12, 10, tzinfo=timezone.utc),
+        )
+
+        session = self.connection.execute(
+            "SELECT * FROM player_sessions"
+        ).fetchone()
+        self.assertEqual(first.started_sessions, 1)
+        self.assertEqual(one_absent.closed_sessions, 0)
+        self.assertEqual(two_absent.closed_sessions, 1)
+        self.assertEqual(session["ended_at"], "2026-08-02T12:10:00+00:00")
+        self.assertEqual(session["confidence"], "api_derived")
+
+    def test_api_snapshot_does_not_duplicate_discord_session(self):
+        self.ingest(1, "Demethan has joined the server.")
+        result = self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online=["Demethan"],
+            observed_at=datetime(2026, 8, 2, 12, 5, tzinfo=timezone.utc),
+        )
+        sessions = self.connection.execute(
+            "SELECT count(*) FROM player_sessions"
+        ).fetchone()[0]
+        self.assertEqual(result.started_sessions, 0)
+        self.assertEqual(sessions, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

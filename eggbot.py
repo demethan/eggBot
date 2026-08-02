@@ -55,6 +55,7 @@ class eggBot(commands.Bot):
             self.database_connection, servers, self.fry_api
         )
         tracking = PlayerTrackingService(self.database_connection)
+        self.tracking_service = tracking
         await self.add_cog(CommandsCog(self))
         await self.add_cog(AdminCommandsCog(self, applications, tracking))
         await self.add_cog(SupportCommandsCog(self, applications))
@@ -156,6 +157,10 @@ class eggBot(commands.Bot):
         for info in data:
             if info:
                 server = info["name"].strip().lower()
+                self.tracking_service.reconcile_api_snapshot(
+                    server_name=server,
+                    players_online=info.get("players_online", {}),
+                )
                 if info["players_online"].__len__() > 0:
                     DATA["server_list"][server]["players"] = info["players_online"]
                     players_online = info["players_online"]

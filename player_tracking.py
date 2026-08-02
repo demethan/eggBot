@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -38,6 +39,13 @@ class WeeklyPlayerHours:
     total_hours: float
     server_hours: dict[str, float]
     open_sessions: int
+
+
+@dataclass(frozen=True)
+class ReconciliationResult:
+    started_sessions: int
+    closed_sessions: int
+    online_players: int
 
 
 def parse_player_event(content: str) -> Optional[ParsedPlayerEvent]:
@@ -237,3 +245,131 @@ class PlayerTrackingService:
         ]
         result.sort(key=lambda item: (-item.total_hours, item.player_name.casefold()))
         return week_start_local, local_now, result
+
+    def reconcile_api_snapshot(
+        self,
+        *,
+        server_name: str,
+        players_online,
+        observed_at: Optional[datetime] = None,
+    ) -> ReconciliationResult:
+        server = self.connection.execute(
+            """
+            SELECT id, name FROM servers
+            WHERE enabled = 1 AND name = ? COLLATE NOCASE
+            """,
+            (server_name.strip(),),
+        ).fetchone()
+        if server is None:
+            return ReconciliationResult(0, 0, 0)
+        if isinstance(players_online, dict):
+            names = {str(name).strip() for name in players_online if str(name).strip()}
+        else:
+            names = {str(name).strip() for name in (players_online or []) if str(name).strip()}
+        normalized_names = {name.casefold() for name in names}
+        timestamp = (observed_at or datetime.now(timezone.utc)).astimezone(
+            timezone.utc
+        ).isoformat(timespec="seconds")
+        previous = self.connection.execute(
+            """
+            SELECT raw_json FROM server_observations
+            WHERE server_id = ? AND status = 'success'
+            ORDER BY observed_at DESC LIMIT 1
+            """,
+            (server["id"],),
+        ).fetchone()
+        previous_names = None
+        if previous is not None:
+            try:
+                previous_names = {
+                    str(name).casefold()
+                    for name in json.loads(previous["raw_json"])["players_online"]
+                }
+            except (KeyError, TypeError, ValueError):
+                previous_names = None
+
+        started = 0
+        closed = 0
+        try:
+            self.connection.execute("BEGIN IMMEDIATE")
+            self.connection.execute(
+                """
+                INSERT OR REPLACE INTO server_observations(
+                    server_id, observed_at, status, online_count, raw_json
+                ) VALUES (?, ?, 'success', ?, ?)
+                """,
+                (
+                    server["id"],
+                    timestamp,
+                    len(names),
+                    json.dumps({"players_online": sorted(names)}),
+                ),
+            )
+            for name in names:
+                player = self.connection.execute(
+                    "SELECT id FROM players WHERE current_name = ? COLLATE NOCASE",
+                    (name,),
+                ).fetchone()
+                if player is None:
+                    player_id = self.connection.execute(
+                        """
+                        INSERT INTO players(current_name, first_seen_at, last_seen_at)
+                        VALUES (?, ?, ?)
+                        """,
+                        (name, timestamp, timestamp),
+                    ).lastrowid
+                    self.connection.execute(
+                        """
+                        INSERT INTO player_names(
+                            player_id, name, first_seen_at, last_seen_at
+                        ) VALUES (?, ?, ?, ?)
+                        """,
+                        (player_id, name, timestamp, timestamp),
+                    )
+                else:
+                    player_id = player["id"]
+                    self.connection.execute(
+                        "UPDATE players SET last_seen_at = ? WHERE id = ?",
+                        (timestamp, player_id),
+                    )
+                cursor = self.connection.execute(
+                    """
+                    INSERT OR IGNORE INTO player_sessions(
+                        player_id, server_id, started_at, start_source, confidence
+                    ) VALUES (?, ?, ?, 'api', 'api_derived')
+                    """,
+                    (player_id, server["id"], timestamp),
+                )
+                started += cursor.rowcount
+
+            if previous_names is not None:
+                open_sessions = self.connection.execute(
+                    """
+                    SELECT ps.id, p.current_name
+                    FROM player_sessions AS ps
+                    JOIN players AS p ON p.id = ps.player_id
+                    WHERE ps.server_id = ? AND ps.ended_at IS NULL
+                    """,
+                    (server["id"],),
+                ).fetchall()
+                for session in open_sessions:
+                    player_key = session["current_name"].casefold()
+                    if (
+                        player_key not in normalized_names
+                        and player_key not in previous_names
+                    ):
+                        self.connection.execute(
+                            """
+                            UPDATE player_sessions
+                            SET ended_at = ?, end_source = 'api',
+                                confidence = 'api_derived'
+                            WHERE id = ?
+                            """,
+                            (timestamp, session["id"]),
+                        )
+                        closed += 1
+            self.connection.commit()
+        except Exception:
+            self.connection.rollback()
+            raise
+        return ReconciliationResult(started, closed, len(names))
