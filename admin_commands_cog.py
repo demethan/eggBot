@@ -7,9 +7,28 @@ from discord.ext import commands
 from config import DATA, save_data
 from loguru import logger
 from discord.utils import get
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import pytz
 color=0x00ff00
+
+STAT_PERIODS = {
+    "week": ("Last 7 days", timedelta(days=7)),
+    "month": ("Last 30 days", timedelta(days=30)),
+    "year": ("Last 365 days", timedelta(days=365)),
+    "all": ("All tracked time", None),
+}
+
+
+def parse_stats_scope(arguments):
+    tokens = (arguments or "").split()
+    period = "month"
+    if tokens and tokens[-1].casefold() in STAT_PERIODS:
+        period = tokens.pop().casefold()
+    server_name = " ".join(tokens) or None
+    label, duration = STAT_PERIODS[period]
+    now = datetime.now(timezone.utc)
+    since = now - duration if duration is not None else None
+    return server_name, label, now, since
 
 #get admins
 def admin_only():
@@ -76,22 +95,29 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         brief='Show tracked activity and current pack by server',
         description=(
             'Admin: Show cumulative tracked play hours, sessions, players, and the '
-            'current pack. Usage: !serverstats [server].'
+            'current pack. Usage: !serverstats [server] [week|month|year|all]. '
+            'Defaults to month; server-specific results are sent by DM.'
         ),
     )
     @admin_only()
     @commands.has_guild_permissions(manage_roles=True)
-    async def serverstats(self, ctx, *, server_name=None):
+    async def serverstats(self, ctx, *, arguments=None):
         """Admin: Show tracked activity and current pack by server.
 
-        Usage: !serverstats or !serverstats <server>
+        Usage: !serverstats [server] [week|month|year|all]
+        Defaults to the last 30 days. Server-specific results are sent by DM.
         Requires Manage Roles permission and must be used in the admin channel.
         """
         if self.tracking_service is None:
             await ctx.send("Server statistics are unavailable.")
             return
-        statistics = self.tracking_service.server_statistics(server_name)
-        embed = discord.Embed(title="Server statistics", color=color)
+        server_name, period_label, now, since = parse_stats_scope(arguments)
+        statistics = self.tracking_service.server_statistics(
+            server_name, now=now, since=since
+        )
+        embed = discord.Embed(
+            title=f"Server statistics — {period_label}", color=color
+        )
         if not statistics:
             embed.description = f"No enabled server found for `{server_name}`."
         for item in statistics[:25]:
@@ -132,29 +158,40 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 ),
                 inline=False,
             )
-        embed.set_footer(text="Statistics begin when EggBot starts tracking Fry metadata.")
-        await ctx.send(embed=embed)
+        embed.set_footer(
+            text=(
+                f"{period_label}. Statistics begin when EggBot starts tracking Fry metadata."
+            )
+        )
+        await self._send_statistics(ctx, embed, private=server_name is not None)
 
     @commands.command(
         brief='Show modpack installation and play statistics',
         description=(
             'Admin: Show pack/version installation duration and tracked player-hours. '
-            'Usage: !packstats [server].'
+            'Usage: !packstats [server] [week|month|year|all]. Defaults to month; '
+            'server-specific results are sent by DM.'
         ),
     )
     @admin_only()
     @commands.has_guild_permissions(manage_roles=True)
-    async def packstats(self, ctx, *, server_name=None):
+    async def packstats(self, ctx, *, arguments=None):
         """Admin: Show modpack installation and play statistics.
 
-        Usage: !packstats or !packstats <server>
+        Usage: !packstats [server] [week|month|year|all]
+        Defaults to the last 30 days. Server-specific results are sent by DM.
         Requires Manage Roles permission and must be used in the admin channel.
         """
         if self.tracking_service is None:
             await ctx.send("Pack statistics are unavailable.")
             return
-        statistics = self.tracking_service.pack_statistics(server_name)
-        embed = discord.Embed(title="Pack statistics", color=color)
+        server_name, period_label, now, since = parse_stats_scope(arguments)
+        statistics = self.tracking_service.pack_statistics(
+            server_name, now=now, since=since
+        )
+        embed = discord.Embed(
+            title=f"Pack statistics — {period_label}", color=color
+        )
         if not statistics:
             embed.description = (
                 f"No tracked pack installations for `{server_name}`."
@@ -208,8 +245,27 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 )
             )
         else:
-            embed.set_footer(text="Statistics begin when EggBot starts tracking Fry metadata.")
-        await ctx.send(embed=embed)
+            embed.set_footer(
+                text=(
+                    f"{period_label}. Statistics begin when EggBot starts tracking "
+                    "Fry metadata."
+                )
+            )
+        await self._send_statistics(ctx, embed, private=server_name is not None)
+
+    @staticmethod
+    async def _send_statistics(ctx, embed, *, private):
+        if not private:
+            await ctx.send(embed=embed)
+            return
+        try:
+            await ctx.author.send(embed=embed)
+            await ctx.message.add_reaction("✅")
+        except discord.Forbidden:
+            await ctx.send(
+                "I could not send the server-specific statistics by DM. "
+                "Enable direct messages and try again."
+            )
 
     @commands.command(
         brief='Match an approved Discord user and Minecraft IGN',

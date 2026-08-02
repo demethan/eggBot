@@ -353,6 +353,21 @@ class PlayerTrackingTests(unittest.TestCase):
         self.assertEqual(packs[0].unique_players, 1)
         self.assertTrue(packs[0].baseline)
 
+        period_start = datetime(2026, 8, 2, 12, 30, tzinfo=timezone.utc)
+        period_servers = self.tracking.server_statistics(
+            "BACON",
+            now=datetime(2026, 8, 2, 14, 0, tzinfo=timezone.utc),
+            since=period_start,
+        )
+        period_packs = self.tracking.pack_statistics(
+            "BACON",
+            now=datetime(2026, 8, 2, 14, 0, tzinfo=timezone.utc),
+            since=period_start,
+        )
+        self.assertAlmostEqual(period_servers[0].total_hours, 35 / 60, places=5)
+        self.assertAlmostEqual(period_packs[0].installed_hours, 1.5, places=5)
+        self.assertAlmostEqual(period_packs[0].played_hours, 35 / 60, places=5)
+
 
 if __name__ == "__main__":
     unittest.main()

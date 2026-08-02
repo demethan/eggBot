@@ -555,19 +555,32 @@ class PlayerTrackingService:
         server_name: Optional[str] = None,
         *,
         now: Optional[datetime] = None,
+        since: Optional[datetime] = None,
     ) -> list[ServerStatistics]:
         current_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
         current_timestamp = current_time.isoformat(timespec="seconds")
+        since_timestamp = (
+            since.astimezone(timezone.utc).isoformat(timespec="seconds")
+            if since is not None
+            else "1970-01-01T00:00:00+00:00"
+        )
         name_filter = "" if server_name is None else "AND s.name = ? COLLATE NOCASE"
-        parameters = [current_timestamp]
+        parameters = [
+            current_timestamp,
+            current_timestamp,
+            since_timestamp,
+            current_timestamp,
+            current_timestamp,
+            since_timestamp,
+        ]
         if server_name is not None:
             parameters.append(server_name.strip())
         rows = self.connection.execute(
             f"""
             SELECT s.name,
                    COALESCE(SUM(
-                       (julianday(COALESCE(ps.ended_at, ?))
-                        - julianday(ps.started_at)) * 24.0
+                       (julianday(MIN(COALESCE(ps.ended_at, ?), ?))
+                        - julianday(MAX(ps.started_at, ?))) * 24.0
                    ), 0.0) AS total_hours,
                    COUNT(ps.id) AS sessions,
                    COUNT(DISTINCT ps.player_id) AS unique_players,
@@ -575,7 +588,10 @@ class PlayerTrackingService:
                    pv.version AS pack_version,
                    pi.started_at AS installed_at
             FROM servers AS s
-            LEFT JOIN player_sessions AS ps ON ps.server_id = s.id
+            LEFT JOIN player_sessions AS ps
+                   ON ps.server_id = s.id
+                  AND ps.started_at < ?
+                  AND COALESCE(ps.ended_at, ?) > ?
             LEFT JOIN pack_installations AS pi
                    ON pi.server_id = s.id AND pi.ended_at IS NULL
             LEFT JOIN pack_versions AS pv ON pv.id = pi.pack_version_id
@@ -604,9 +620,15 @@ class PlayerTrackingService:
         server_name: Optional[str] = None,
         *,
         now: Optional[datetime] = None,
+        since: Optional[datetime] = None,
     ) -> list[PackStatistics]:
         current_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
         current_timestamp = current_time.isoformat(timespec="seconds")
+        since_timestamp = (
+            since.astimezone(timezone.utc).isoformat(timespec="seconds")
+            if since is not None
+            else "1970-01-01T00:00:00+00:00"
+        )
         name_filter = "" if server_name is None else "AND s.name = ? COLLATE NOCASE"
         rows = self.connection.execute(
             f"""
@@ -617,12 +639,12 @@ class PlayerTrackingService:
                        WHERE first_pi.server_id = pi.server_id
                        ORDER BY first_pi.started_at, first_pi.id LIMIT 1
                    ) THEN 1 ELSE 0 END AS baseline,
-                   (julianday(COALESCE(pi.ended_at, ?))
-                    - julianday(pi.started_at)) * 24.0 AS installed_hours,
+                   (julianday(MIN(COALESCE(pi.ended_at, ?), ?))
+                    - julianday(MAX(pi.started_at, ?))) * 24.0 AS installed_hours,
                    COALESCE(SUM(
                        (julianday(MIN(COALESCE(ps.ended_at, ?),
-                                      COALESCE(pi.ended_at, ?)))
-                        - julianday(MAX(ps.started_at, pi.started_at))) * 24.0
+                                      COALESCE(pi.ended_at, ?), ?))
+                        - julianday(MAX(ps.started_at, pi.started_at, ?))) * 24.0
                    ), 0.0) AS played_hours,
                    COUNT(ps.id) AS sessions,
                    COUNT(DISTINCT ps.player_id) AS unique_players
@@ -630,12 +652,31 @@ class PlayerTrackingService:
             JOIN servers AS s ON s.id = pi.server_id
             JOIN pack_versions AS pv ON pv.id = pi.pack_version_id
             JOIN packs AS p ON p.id = pv.pack_id
-            LEFT JOIN player_sessions AS ps ON ps.pack_installation_id = pi.id
-            WHERE 1 = 1 {name_filter}
+            LEFT JOIN player_sessions AS ps
+                   ON ps.pack_installation_id = pi.id
+                  AND ps.started_at < ?
+                  AND COALESCE(ps.ended_at, ?) > ?
+            WHERE pi.started_at < ?
+              AND COALESCE(pi.ended_at, ?) > ?
+              {name_filter}
             GROUP BY pi.id
             ORDER BY pi.started_at DESC, s.name COLLATE NOCASE
             """,
-            [current_timestamp, current_timestamp, current_timestamp]
+            [
+                current_timestamp,
+                current_timestamp,
+                since_timestamp,
+                current_timestamp,
+                current_timestamp,
+                current_timestamp,
+                since_timestamp,
+                current_timestamp,
+                current_timestamp,
+                since_timestamp,
+                current_timestamp,
+                current_timestamp,
+                since_timestamp,
+            ]
             + ([] if server_name is None else [server_name.strip()]),
         ).fetchall()
         return [

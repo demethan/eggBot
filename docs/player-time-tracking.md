@@ -45,10 +45,16 @@ Admins with **Manage Roles** can use these commands in the admin channel:
 
 - `!serverstats` shows cumulative player-hours, sessions, unique players, and the
   current pack for every enabled server. The global view is condensed;
-  `!serverstats <server>` shows the complete report for one server.
+  `!serverstats <server>` sends the complete report to the requesting admin by DM.
 - `!packstats` shows installation duration, player-hours, sessions, and unique players
   for recorded pack versions. The global view shows a short current-pack summary;
-  `!packstats <server>` shows that server's complete installation history.
+  `!packstats <server>` sends that server's complete installation history by DM.
+
+Both reports default to the last 30 days. Append `week`, `month`, `year`, or `all` to
+select the last 7 days, last 30 days, last 365 days, or all tracked time. Examples:
+`!serverstats year`, `!serverstats pizza all`, and `!packstats bacon month`. Global
+summaries remain in the admin channel. Server-specific data is never posted publicly
+when the requester has DMs disabled.
 
 Statistics begin with EggBot's first successful tracking poll; EggBot does not invent
 an earlier installation date. An installation remains current until Fry reports a
