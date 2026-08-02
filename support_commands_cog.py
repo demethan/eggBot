@@ -59,10 +59,10 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
         message = await ctx.author.send(
             f"{prompt}\n"
             "✅ Yes\n"
-            "❌ No\n"
-            "🛑 Cancel application"
+            "🚫 No\n"
+            "🔴 Cancel application"
         )
-        choices = {"✅": True, "❌": False, "🛑": None}
+        choices = {"✅": True, "🚫": False, "🔴": None}
         for emoji in choices:
             await message.add_reaction(emoji)
 
@@ -90,9 +90,9 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             f"How should `{sponsor_identifier}` be identified?\n"
             "💬 Discord name\n"
             "🎮 Minecraft IGN\n"
-            "❌ Cancel application"
+            "🔴 Cancel application"
         )
-        choices = {"💬": "discord", "🎮": "minecraft", "❌": None}
+        choices = {"💬": "discord", "🎮": "minecraft", "🔴": None}
         for emoji in choices:
             await message.add_reaction(emoji)
 
@@ -122,14 +122,14 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             "📦 Modpack search\n"
             "🧑 Sponsor / friend\n"
             "▶️ YouTube\n"
-            "❌ Cancel application"
+            "🔴 Cancel application"
         )
         choices = {
             "🔎": "Web search",
             "📦": "Modpack search",
             "🧑": "Sponsor / friend",
             "▶️": "YouTube",
-            "❌": None,
+            "🔴": None,
         }
         for emoji in choices:
             await message.add_reaction(emoji)

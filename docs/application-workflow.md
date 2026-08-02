@@ -10,9 +10,9 @@ only one open application. Applicants provide their Minecraft IGN, whether they 
 by either Discord name or Minecraft IGN.
 
 Sponsor entry asks for the name first, then presents DM reactions: 💬 for a Discord
-name, 🎮 for a Minecraft IGN, or ❌ to cancel the application.
+name, 🎮 for a Minecraft IGN, or 🔴 to cancel the application.
 
-All yes/no questions use reactions: ✅ for yes, ❌ for no, and 🛑 to cancel the
+All yes/no questions use reactions: ✅ for yes, 🚫 for no, and 🔴 to cancel the
 application.
 
 The discovery-source question also uses reactions and stores a consistent reporting
