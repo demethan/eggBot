@@ -4,6 +4,18 @@ EggBot listens only in the configured `generalChannelID` and accepts join/leave
 notifications only from Discord bot accounts whose display name matches an enabled
 server in SQLite. Normal relayed chat is ignored.
 
+When a notification webhook has a generic name such as `Bridge` or `Server`, map its
+Discord webhook ID to an EggBot server name in `serverNotificationSources`. Example:
+
+```json
+"serverNotificationSources": {
+  "1517681380295835789": "bacon"
+}
+```
+
+Unmapped generic sources are rejected rather than assigning play time to the wrong
+server.
+
 Supported notifications include `Player has joined the server.` and `Player has left
 the server.` (plus equivalent `the game` variants). Discord message IDs make ingestion
 idempotent. A join opens one exact session per player/server; a leave closes it. A

@@ -7,6 +7,9 @@
     "server_list": {},
     "fryBotRoleID": 123456789,
     "applicationReviewerRoleID": 123456789,
+    "serverNotificationSources": {
+        "DISCORD_BOT_OR_WEBHOOK_ID": "SERVER_NAME"
+    },
     "memberRoleID": 123456789,
     "reboot_schedule": {}
 }

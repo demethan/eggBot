@@ -19,11 +19,15 @@ class TrackingCog(commands.Cog, name="Tracking"):
         ):
             return
         try:
+            source_id = message.webhook_id or message.author.id
+            source_name = DATA.get("serverNotificationSources", {}).get(
+                str(source_id), message.author.display_name
+            )
             result = self.tracking_service.ingest_discord_message(
                 discord_message_id=message.id,
                 discord_channel_id=message.channel.id,
-                source_discord_id=message.author.id,
-                source_name=message.author.display_name,
+                source_discord_id=source_id,
+                source_name=source_name,
                 occurred_at=message.created_at,
                 raw_content=message.content,
             )
