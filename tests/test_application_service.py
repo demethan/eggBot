@@ -45,6 +45,8 @@ class FakeFryClient:
             return FryResult.failure(FryErrorCode.CONNECTION_ERROR, retryable=True)
         if self.shared_updates:
             self.already.update({"BACON", "EGGS"})
+        else:
+            self.already.add(server.name)
         return FryResult.success(f"{name} added")
 
     async def whitelist_remove(self, server, name):
@@ -253,6 +255,19 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
             [tuple(row) for row in rows],
             [(999, "Demethan", "added"), (999, "Demethan", "present")],
         )
+
+    async def test_admin_addition_targets_servers_where_shared_update_did_not_propagate(self):
+        fry = FakeFryClient()
+        service = self.service(fry)
+
+        outcomes = await service.add_to_whitelists("Demethan", 999)
+
+        self.assertEqual(
+            fry.add_calls,
+            [("BACON", "Demethan"), ("EGGS", "Demethan")],
+        )
+        self.assertEqual(outcomes["BACON"].status, "added")
+        self.assertEqual(outcomes["EGGS"].status, "added")
 
     def test_denial_followup_offer_is_durable_and_single_response(self):
         service = self.service(FakeFryClient())

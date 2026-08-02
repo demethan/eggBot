@@ -75,7 +75,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         """Admin: Remove an IGN from all enabled server whitelists.
 
         Usage: !unwhitelist <Minecraft IGN>
-        Requires Manage Roles permission and a 🗑️ confirmation in the admin channel.
+        Requires Manage Roles permission and a ✅ confirmation in the admin channel.
         """
         if self.application_service is None:
             await ctx.send("Whitelist administration is unavailable.")
@@ -86,17 +86,17 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             return
         confirmation = await ctx.send(
             f"Remove **{minecraft_name}** from every enabled server?\n"
-            "🗑️ Confirm removal\n"
+            "✅ Confirm removal\n"
             "🔴 Cancel"
         )
-        await confirmation.add_reaction("🗑️")
+        await confirmation.add_reaction("✅")
         await confirmation.add_reaction("🔴")
 
         def check(reaction, user):
             return (
                 user == ctx.author
                 and reaction.message.id == confirmation.id
-                and str(reaction.emoji) in ("🗑️", "🔴")
+                and str(reaction.emoji) in ("✅", "🔴")
             )
 
         try:
@@ -148,7 +148,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         """Admin: Add an IGN to the shared server whitelist.
 
         Usage: !whitelist <Minecraft IGN>
-        Requires Manage Roles permission and a ➕ confirmation in the admin channel.
+        Requires Manage Roles permission and a ✅ confirmation in the admin channel.
         """
         if self.application_service is None:
             await ctx.send("Whitelist administration is unavailable.")
@@ -159,17 +159,17 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             return
         confirmation = await ctx.send(
             f"Add **{minecraft_name}** to the shared server whitelist?\n"
-            "➕ Confirm addition\n"
+            "✅ Confirm addition\n"
             "🔴 Cancel"
         )
-        await confirmation.add_reaction("➕")
+        await confirmation.add_reaction("✅")
         await confirmation.add_reaction("🔴")
 
         def check(reaction, user):
             return (
                 user == ctx.author
                 and reaction.message.id == confirmation.id
-                and str(reaction.emoji) in ("➕", "🔴")
+                and str(reaction.emoji) in ("✅", "🔴")
             )
 
         try:

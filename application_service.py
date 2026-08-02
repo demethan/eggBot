@@ -390,17 +390,47 @@ class ApplicationService:
         ]
         primary = absent_servers[0] if absent_servers else None
         addition = None
+        addition_results = {}
         if primary is not None:
             try:
                 addition = await self.fry.whitelist_add(primary, name)
             except Exception:
                 addition = FryResult.failure(FryErrorCode.INTERNAL_ERROR)
+            addition_results[primary.id] = addition
 
         if primary is not None and addition.ok:
-            final_checks = await asyncio.gather(
-                *(self.fry.whitelist_contains(server, name) for server in servers),
-                return_exceptions=True,
-            )
+            final_checks = initial_checks
+            for delay in self.whitelist_propagation_delays:
+                if delay:
+                    await asyncio.sleep(delay)
+                final_checks = await asyncio.gather(
+                    *(self.fry.whitelist_contains(server, name) for server in servers),
+                    return_exceptions=True,
+                )
+                if not any(
+                    not isinstance(check, Exception) and check.ok and not check.value
+                    for check in final_checks
+                ):
+                    break
+
+            remaining = [
+                server
+                for server, check in zip(servers, final_checks)
+                if not isinstance(check, Exception) and check.ok and not check.value
+            ]
+            if remaining:
+                targeted = await asyncio.gather(
+                    *(self.fry.whitelist_add(server, name) for server in remaining),
+                    return_exceptions=True,
+                )
+                for server, result in zip(remaining, targeted):
+                    if isinstance(result, Exception):
+                        result = FryResult.failure(FryErrorCode.INTERNAL_ERROR)
+                    addition_results[server.id] = result
+                final_checks = await asyncio.gather(
+                    *(self.fry.whitelist_contains(server, name) for server in servers),
+                    return_exceptions=True,
+                )
         else:
             final_checks = initial_checks
 
@@ -411,20 +441,21 @@ class ApplicationService:
             elif not check.ok:
                 outcome = self._failure_outcome(check)
             elif not check.value:
-                if primary is not None and addition is not None and not addition.ok:
-                    failure = self._failure_outcome(addition)
+                attempted = addition_results.get(server.id) or addition
+                if attempted is not None and not attempted.ok:
+                    failure = self._failure_outcome(attempted)
                     outcome = ServerWhitelistOutcome(
                         failure.status,
-                        f"Addition through {primary.name} failed: {failure.message}",
+                        f"Addition failed: {failure.message}",
                     )
                 else:
                     outcome = ServerWhitelistOutcome(
                         "failed",
-                        f"Still absent after addition through {primary.name}",
+                        "Still absent after shared and targeted addition",
                     )
-            elif primary is not None and server.id == primary.id and addition.ok:
+            elif server.id in addition_results and addition_results[server.id].ok:
                 outcome = ServerWhitelistOutcome(
-                    "added", f"Added through {primary.name} and verified present"
+                    "added", f"Added through {server.name} and verified present"
                 )
             elif primary is not None and addition.ok:
                 outcome = ServerWhitelistOutcome(

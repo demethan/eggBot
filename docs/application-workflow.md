@@ -57,16 +57,18 @@ removes only its own prompt reactions because Discord does not allow bulk reacti
 clearing in private channels.
 
 Admins with **Manage Roles** can use `!unwhitelist <Minecraft IGN>` in the admin
-channel. The command requires a 🗑️ reaction confirmation, checks each enabled server
+channel. The command requires a ✅ reaction confirmation, checks each enabled server
 before removal, sends one removal through the first server where the IGN is present,
 then waits and re-checks every server to verify the shared whitelist propagated. If a
 server still reports the IGN after the bounded wait, that server receives one targeted
 removal and all servers are verified again. Every result is stored as a per-server
 audit record. 🔴 cancels without making changes.
 
-`!whitelist <Minecraft IGN>` mirrors that safety model for additions: ➕ confirms,
-one server receives the add request, every enabled server is re-checked for shared-list
-propagation, and all results are audited. 🔴 cancels without making changes.
+`!whitelist <Minecraft IGN>` mirrors that safety model for additions: ✅ confirms,
+one server receives the add request, EggBot waits and re-checks every enabled server
+for shared-list propagation, then targets only servers where the IGN remains absent.
+All servers are verified again and every result is audited. 🔴 cancels without making
+changes.
 
 After the role is assigned, EggBot stores the stable Discord user ID, current Discord
 username and server display name alongside the Minecraft IGN. Admins with **Manage
