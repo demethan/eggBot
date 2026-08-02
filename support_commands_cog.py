@@ -403,3 +403,44 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             )
         elif result.status == "failed":
             logger.error("Unexpected application processing failure")
+
+    async def reconcile_pending_reviews(self):
+        """Process one clear admin decision that arrived while EggBot was offline."""
+        if self.application_service is None:
+            return
+        for application in self.application_service.list_pending():
+            try:
+                channel = self.client.get_channel(application.admin_channel_id)
+                if channel is None:
+                    channel = await self.client.fetch_channel(
+                        application.admin_channel_id
+                    )
+                message = await channel.fetch_message(application.admin_message_id)
+                decisions = []
+                for reaction in message.reactions:
+                    if str(reaction.emoji) not in ("👍", "👎"):
+                        continue
+                    async for reaction_user in reaction.users():
+                        if reaction_user.bot:
+                            continue
+                        member = message.guild.get_member(reaction_user.id)
+                        if member is None:
+                            member = await message.guild.fetch_member(reaction_user.id)
+                        if self._reviewer_allowed(member):
+                            decisions.append((reaction, member))
+                if len(decisions) == 1:
+                    reaction, reviewer = decisions[0]
+                    logger.info(
+                        "Recovering offline application review for application {}",
+                        application.id,
+                    )
+                    await self.on_reaction_add(reaction, reviewer)
+                elif len(decisions) > 1:
+                    logger.warning(
+                        "Application {} has conflicting offline review reactions",
+                        application.id,
+                    )
+            except (discord.HTTPException, discord.NotFound):
+                logger.exception(
+                    "Unable to reconcile pending application {}", application.id
+                )

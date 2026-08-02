@@ -155,6 +155,14 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(denied.status, "denied")
         self.assertEqual(approved.status, "already_decided")
 
+    def test_pending_list_excludes_completed_applications(self):
+        service = self.service(FakeFryClient())
+        pending = self.submit(service)
+        completed = self.submit(service, user_id=456)
+        service.deny(completed.admin_message_id, 999)
+
+        self.assertEqual(service.list_pending(), [pending])
+
     def test_only_one_open_application_per_discord_user(self):
         service = self.service(FakeFryClient())
         self.submit(service)

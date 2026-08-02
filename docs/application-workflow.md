@@ -28,6 +28,11 @@ the IGN directly through each enabled FryingPan2 API. The member role is assigne
 after every server succeeds. Per-server successes are retained so a later retry calls
 only failed servers. Simultaneous review attempts are locked in SQLite.
 
+On reconnect, EggBot reconciles pending review messages. One unambiguous authorized
+thumb reaction received while the bot was offline is processed automatically;
+conflicting decisions are left pending for an admin to resolve. Retryable partial
+failures are never retried merely because the bot restarted.
+
 The original admin message is edited with the final or retry status and is never
 deleted. If role assignment fails after whitelisting, the application returns to a
 retryable state; completed FryingPan2 calls are not repeated.

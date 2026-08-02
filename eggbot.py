@@ -73,6 +73,9 @@ class eggBot(commands.Bot):
     #startup connection to discord
     async def on_ready(self):
         await self.validate_data()
+        support_cog = self.get_cog("SupportCommands")
+        if support_cog is not None:
+            await support_cog.reconcile_pending_reviews()
         logger.info('Logged on as {0}!'.format(self.user))
 
     async def close(self):

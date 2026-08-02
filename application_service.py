@@ -79,6 +79,9 @@ class ApplicationService:
     def get_by_admin_message(self, message_id: int) -> Optional[Application]:
         return self.applications.get_by_admin_message(message_id)
 
+    def list_pending(self) -> list[Application]:
+        return self.applications.list_pending()
+
     def mark_role_failure(self, application_id: int, note: str) -> Application:
         application = self.applications.mark_partial_failure(application_id, note)
         self.connection.commit()

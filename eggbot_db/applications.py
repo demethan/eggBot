@@ -107,6 +107,16 @@ class ApplicationRepository:
         ).fetchone()
         return None if row is None else self._from_row(row)
 
+    def list_pending(self) -> list[Application]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM applications
+            WHERE status = 'pending' AND admin_message_id IS NOT NULL
+            ORDER BY submitted_at
+            """
+        ).fetchall()
+        return [self._from_row(row) for row in rows]
+
     def attach_admin_message(
         self,
         application_id: int,
