@@ -27,7 +27,7 @@ class DatabaseTests(unittest.TestCase):
         first = self.database.migrate()
         second = self.database.migrate()
 
-        self.assertEqual([migration.version for migration in first], [1, 2])
+        self.assertEqual([migration.version for migration in first], [1, 2, 3])
         self.assertEqual(second, [])
         with self.database.connect() as connection:
             applied = connection.execute(
@@ -35,7 +35,11 @@ class DatabaseTests(unittest.TestCase):
             ).fetchall()
             self.assertEqual(
                 [tuple(row) for row in applied],
-                [(1, "initial_schema"), (2, "legacy_import")],
+                [
+                    (1, "initial_schema"),
+                    (2, "legacy_import"),
+                    (3, "application_workflow"),
+                ],
             )
 
     def test_connection_enables_integrity_and_wal_settings(self):

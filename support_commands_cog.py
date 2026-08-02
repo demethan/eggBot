@@ -1,23 +1,26 @@
-import discord
-import random
-import re
-import aiohttp
 import asyncio
-import time
+import sqlite3
+
+import aiohttp
+import discord
 from discord.ext import commands
-from config import DATA, save_data
 from loguru import logger
-from discord.utils import get
+
+from application_service import ApplicationAnswers, ApplicationService, DecisionResult
+from config import DATA
 from minecraft_api import validate_minecraft_username
 
-color=0x00ff00
 
 MAX_RETRIES = 3
-RATE_LIMIT_WAIT_TIME = 1  # Time to wait in seconds when rate limit is hit
+RATE_LIMIT_WAIT_TIME = 1
+APPLICATION_TIMEOUT = 300
+CANCEL_WORD = "cancel"
 
-class SupportCommandsCog(commands.Cog, name='SupportCommands'):
-    def __init__(self, client):
+
+class SupportCommandsCog(commands.Cog, name="SupportCommands"):
+    def __init__(self, client, application_service: ApplicationService | None = None):
         self.client = client
+        self.application_service = application_service
 
     async def validate_ign(self, ign):
         timeout = aiohttp.ClientTimeout(total=10)
@@ -29,134 +32,247 @@ class SupportCommandsCog(commands.Cog, name='SupportCommands'):
                 retry_delay=RATE_LIMIT_WAIT_TIME,
             )
 
-
-    @commands.command(description='Apply to be a member.', rest_is_raw=True)
-    async def apply(self, ctx):
-        if ctx.channel.id != DATA["supportChannelID"]:
-            return
+    async def _answer(self, ctx, prompt):
+        await ctx.author.send(f"{prompt}\nType `{CANCEL_WORD}` to stop applying.")
 
         def check(message):
             return message.author == ctx.author and message.channel == ctx.author.dm_channel
 
-        # Check if the user is already a member
+        try:
+            message = await self.client.wait_for(
+                "message", check=check, timeout=APPLICATION_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            await ctx.author.send("Your application timed out. Run `!apply` to start again.")
+            return None
+        value = message.content.strip()
+        if value.casefold() == CANCEL_WORD:
+            await ctx.author.send("Application cancelled. Nothing was submitted.")
+            return None
+        return message
+
+    async def _yes_no(self, ctx, prompt):
+        while True:
+            message = await self._answer(ctx, prompt)
+            if message is None:
+                return None
+            answer = message.content.strip().casefold()
+            if answer in ("yes", "no"):
+                return answer == "yes"
+            await ctx.author.send('Please answer with "yes" or "no".')
+
+    @commands.command(description="Apply to be a member.", rest_is_raw=True)
+    async def apply(self, ctx):
+        if ctx.channel.id != int(DATA["supportChannelID"]):
+            return
+        if self.application_service is None:
+            await ctx.author.send("Applications are temporarily unavailable.")
+            logger.error("Application service is not configured")
+            return
+
         member_role = discord.utils.get(ctx.guild.roles, id=int(DATA["memberRoleID"]))
         if member_role in ctx.author.roles:
             await ctx.author.send("You are already a member.")
             return
 
         while True:
-            await ctx.author.send('What is your IGN (Minecraft name)? Please remember that it is case sensitive.')
-            ign_message = await self.client.wait_for('message', check=check)
-            ign = ign_message.content
-
-            # Validate IGN using Minecraft API
+            ign_message = await self._answer(
+                ctx,
+                "What is your IGN (Minecraft name)? It is case sensitive.",
+            )
+            if ign_message is None:
+                return
+            ign = ign_message.content.strip()
             valid_ign = await self.validate_ign(ign)
             if valid_ign is True:
+                await ign_message.add_reaction("✅")
                 break
-            elif valid_ign is None:
-                await ctx.author.send('Minecraft name validation is temporarily unavailable. Please try again shortly.')
+            if valid_ign is None:
+                await ctx.author.send("Minecraft name validation is temporarily unavailable.")
             else:
-                await ctx.author.send('Invalid IGN. Please enter a valid Minecraft name.')
+                await ctx.author.send("That is not a valid Minecraft name.")
 
-        # React with a checkmark to the IGN entry message
-        await ign_message.add_reaction('✅')
+        over_18 = await self._yes_no(ctx, "Are you 18 or older? (yes/no)")
+        if over_18 is None:
+            return
+
+        sponsor_type = None
+        sponsor_identifier = None
+        if not over_18:
+            has_sponsor = await self._yes_no(ctx, "Do you have a sponsor? (yes/no)")
+            if has_sponsor is None:
+                return
+            if has_sponsor:
+                while True:
+                    sponsor_kind = await self._answer(
+                        ctx,
+                        "Will you identify your sponsor by Discord name or Minecraft IGN? "
+                        "(discord/minecraft)",
+                    )
+                    if sponsor_kind is None:
+                        return
+                    sponsor_type = sponsor_kind.content.strip().casefold()
+                    if sponsor_type in ("discord", "minecraft"):
+                        break
+                    await ctx.author.send('Please answer with "discord" or "minecraft".')
+                sponsor = await self._answer(
+                    ctx,
+                    "Provide your sponsor's Discord name or Minecraft in-game name.",
+                )
+                if sponsor is None:
+                    return
+                sponsor_identifier = sponsor.content.strip()[:100]
 
         while True:
-            await ctx.author.send('Are you older than 18? (yes/no)')
-            age_check_message = await self.client.wait_for('message', check=check)
-            age_check = age_check_message.content.lower()
-
-            if age_check in ['yes', 'no']:
+            source_message = await self._answer(ctx, "Where did you find us?")
+            if source_message is None:
+                return
+            source = source_message.content.strip()[:200]
+            if source:
                 break
-            else:
-                await ctx.author.send('Invalid response. Please answer with either "yes" or "no".')
+            await ctx.author.send("Please provide a source.")
 
-
-        if age_check == 'no':
-            while True:
-                await ctx.author.send('Do you have a sponsor? (yes/no)')
-                sponsor_check_message = await self.client.wait_for('message', check=check)
-                sponsor_check = sponsor_check_message.content.lower()
-
-                if sponsor_check in ['yes', 'no']:
-                    break
-                else:
-                    await ctx.author.send('Invalid response. Please answer with either "yes" or "no".')
-
-            if sponsor_check == 'yes':
-                await ctx.author.send('Who is your sponsor?')
-                sponsor_message = await self.client.wait_for('message', check=check)
-                sponsor = sponsor_message.content[:20]
-            else:
-                sponsor = None
-        else:
-            sponsor = None
-
-        await ctx.author.send('Where did you find us?')
-        source_message = await self.client.wait_for('message', check=check)
-        source = source_message.content[:100]
-
-        if len(source) == 0:
-            await ctx.author.send('Invalid source. Please provide a source.')
-
-        admin_channel = discord.utils.get(ctx.guild.text_channels, id=int(DATA["adminChannelID"]))
-        if not admin_channel:
-            await ctx.send('Admin channel not found.')
-            return
-
-        approval_message = await admin_channel.send(
-            f'New application:\nIGN: {ign}\nOver 18: {age_check}\nSource: {source}\nSponsor: {sponsor}\nReact with 👍 to approve, 👎 to deny.')
-        await approval_message.add_reaction('👍')
-        await approval_message.add_reaction('👎')
-
-        # Store the user ID, IGN with the message ID for later retrieval
-        self.client.applications = getattr(self.client, 'applications', {})
-        self.client.applications[approval_message.id] = (ctx.author.id, ign, sponsor)
-
-
-    @commands.Cog.listener()
-    async def on_reaction_add(self, reaction, user):
-        if reaction.message.channel.id != int(DATA["adminChannelID"]):
-            return
-        
-        # Fetch the user who made the application and their IGN
-        application = self.client.applications.get(reaction.message.id)
-        if not application:
-            logger.debug("No applicant data to fetch")
-            return
-        # Unpack the application tuple based on its length
-        if len(application) == 2:
-            applicant_id, ign = application
-            sponsor = None
-        elif len(application) == 3:
-            applicant_id, ign, sponsor = application
-        else:
-            logger.debug("Invalid application data")
-            return
-        applicant = await reaction.message.guild.fetch_member(applicant_id)
-        if not applicant:
-            logger.debug("No applicant found with {}".format(applicant_id))
-            return
-
-        # Fetch the 'member' role by ID
-        member_role = discord.utils.get(reaction.message.guild.roles, id=int(DATA["memberRoleID"]))
-        if not member_role:
-            logger.debug("No member role found.")
+        admin_channel = discord.utils.get(
+            ctx.guild.text_channels, id=int(DATA["adminChannelID"])
+        )
+        if admin_channel is None:
+            await ctx.author.send("The admin review channel is unavailable. Please contact an admin.")
             return
 
         try:
-            if str(reaction.emoji) == '👍':
-                await applicant.add_roles(member_role)
-                await reaction.message.channel.send(f'Application approved by {user.name}. {applicant.name} has been added to the member role.')
-                await reaction.message.channel.send(f'{reaction.message.guild.get_role(DATA["fryBotRoleID"]).mention} !send whitelist add {ign}')
-                await reaction.message.channel.send(f'{reaction.message.guild.get_role(DATA["fryBotRoleID"]).mention} !send whitelist reload')
-                await applicant.send(f'Your application has been approved by {user.name}. You have been added to the member role.')
-            elif str(reaction.emoji) == '👎':
-                await reaction.message.channel.send(f'{applicant.name}`s application was denied by {user.name}.')
-                await applicant.send(f'Your application has been denied by {user.name}.')
-            
-            # Remove the original application message
-            await reaction.message.delete()
-        except Exception as e:
-            logger.error(f"Error while processing reaction: {str(e)}")
-            logger.error(f"Error details: {type(e).__name__}, {e.args}")
+            application = self.application_service.submit(
+                ApplicationAnswers(
+                    discord_user_id=ctx.author.id,
+                    minecraft_name=ign,
+                    over_18=over_18,
+                    sponsor_type=sponsor_type,
+                    sponsor_identifier=sponsor_identifier,
+                    source=source,
+                )
+            )
+        except sqlite3.IntegrityError:
+            await ctx.author.send("You already have an application awaiting review.")
+            return
+        except Exception:
+            logger.exception("Unable to save membership application")
+            await ctx.author.send("Your application could not be saved. Please contact an admin.")
+            return
+
+        try:
+            approval_message = await admin_channel.send(
+                embed=self._application_embed(application, "Pending review")
+            )
+        except discord.HTTPException:
+            self.application_service.fail_submission(
+                application.id, "Could not post application for admin review"
+            )
+            logger.exception("Unable to post membership application")
+            await ctx.author.send("Your application could not be posted. Please try again.")
+            return
+        self.application_service.attach_admin_message(
+            application.id, admin_channel.id, approval_message.id
+        )
+        await approval_message.add_reaction("👍")
+        await approval_message.add_reaction("👎")
+        await ctx.author.send("Your application was submitted for admin review.")
+
+    @staticmethod
+    def _reviewer_allowed(user):
+        permissions = user.guild_permissions
+        return permissions.administrator or permissions.manage_roles
+
+    @staticmethod
+    def _application_embed(application, heading, detail=None):
+        colors = {
+            "Pending review": 0xF1C40F,
+            "Approved": 0x2ECC71,
+            "Denied": 0xE74C3C,
+            "Needs retry": 0xE67E22,
+        }
+        embed = discord.Embed(title=f"Membership application #{application.id}", color=colors[heading])
+        embed.add_field(name="Status", value=heading, inline=False)
+        embed.add_field(name="Minecraft IGN", value=application.minecraft_name)
+        embed.add_field(name="18 or older", value="Yes" if application.over_18 else "No")
+        sponsor = "None"
+        if application.sponsor_identifier:
+            sponsor = f"{application.sponsor_identifier} ({application.sponsor_type})"
+        embed.add_field(name="Sponsor", value=sponsor, inline=False)
+        embed.add_field(name="Found us through", value=application.source, inline=False)
+        embed.add_field(name="Discord user", value=f"<@{application.discord_user_id}>", inline=False)
+        if detail:
+            embed.add_field(name="Review details", value=detail[:1024], inline=False)
+        return embed
+
+    @staticmethod
+    def _server_summary(result: DecisionResult):
+        if not result.servers:
+            return result.message or "No server results."
+        return "\n".join(
+            f"{name}: {outcome.message}" for name, outcome in result.servers.items()
+        )
+
+    @commands.Cog.listener()
+    async def on_reaction_add(self, reaction, user):
+        if user.bot or reaction.message.channel.id != int(DATA["adminChannelID"]):
+            return
+        emoji = str(reaction.emoji)
+        if emoji not in ("👍", "👎") or not self._reviewer_allowed(user):
+            return
+        if self.application_service is None:
+            return
+
+        application = self.application_service.get_by_admin_message(reaction.message.id)
+        if application is None:
+            return
+        try:
+            applicant = await reaction.message.guild.fetch_member(application.discord_user_id)
+        except discord.NotFound:
+            applicant = None
+
+        if emoji == "👎":
+            result = self.application_service.deny(reaction.message.id, user.id)
+            if result.status != "denied":
+                return
+            await reaction.message.edit(
+                embed=self._application_embed(result.application, "Denied", f"Reviewed by {user.mention}")
+            )
+            if applicant:
+                await applicant.send(f"Your application was denied by {user.name}.")
+            return
+
+        result = await self.application_service.approve(reaction.message.id, user.id)
+        if result.status == "approved":
+            member_role = discord.utils.get(
+                reaction.message.guild.roles, id=int(DATA["memberRoleID"])
+            )
+            try:
+                if applicant is None or member_role is None:
+                    raise RuntimeError("Applicant or member role is unavailable")
+                await applicant.add_roles(member_role, reason=f"Application #{result.application.id}")
+            except (discord.HTTPException, RuntimeError) as exc:
+                logger.exception("Whitelist completed but member role assignment failed")
+                application = self.application_service.mark_role_failure(
+                    result.application.id, "Discord member role assignment failed"
+                )
+                await reaction.message.edit(
+                    embed=self._application_embed(
+                        application, "Needs retry", self._server_summary(result)
+                    )
+                )
+                return
+            await reaction.message.edit(
+                embed=self._application_embed(
+                    result.application,
+                    "Approved",
+                    f"Reviewed by {user.mention}\n{self._server_summary(result)}",
+                )
+            )
+            await applicant.send(f"Your application was approved by {user.name}.")
+        elif result.status == "partial_failure":
+            await reaction.message.edit(
+                embed=self._application_embed(
+                    result.application, "Needs retry", self._server_summary(result)
+                )
+            )
+        elif result.status == "failed":
+            logger.error("Unexpected application processing failure")

@@ -7,9 +7,16 @@ import re
 import aiohttp
 import asyncio
 import datetime
+import os
+from pathlib import Path
 from commands_cog import CommandsCog
 from admin_commands_cog import AdminCommandsCog
 from support_commands_cog import SupportCommandsCog
+from application_service import ApplicationService
+from eggbot_db.database import Database
+from eggbot_db.repositories import ServerRepository
+from eggbot_db.secrets import SecretBox
+from fry_api import FryApiClient
 from discord.ext import commands
 from config import CONFIG, DATA
 from config import DATA, save_data
@@ -19,7 +26,35 @@ from loguru import logger
 class eggBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        asyncio.ensure_future(self.recuring_task())
+        self.database_connection = None
+        self.fry_api = None
+        self._recurring_task = None
+
+    async def setup_hook(self):
+        database = Database(Path(os.environ.get("EGGBOT_DB_PATH", "eggbot.sqlite3")))
+        database.migrate()
+        key_file = os.environ.get("EGGBOT_SECRET_KEY_FILE")
+        secrets = (
+            SecretBox.from_file(Path(key_file))
+            if key_file
+            else SecretBox.from_environment()
+        )
+        self.database_connection = database.connect()
+        servers = ServerRepository(self.database_connection, secrets)
+
+        def persist_token(server, token):
+            servers.update_token(server.id, token)
+            self.database_connection.commit()
+
+        self.fry_api = FryApiClient(on_token_refreshed=persist_token)
+        await self.fry_api.start()
+        applications = ApplicationService(
+            self.database_connection, servers, self.fry_api
+        )
+        await self.add_cog(CommandsCog(self))
+        await self.add_cog(AdminCommandsCog(self))
+        await self.add_cog(SupportCommandsCog(self, applications))
+        self._recurring_task = asyncio.create_task(self.recuring_task())
         
     # support channel welcome concierge
     async def on_member_join(self, member):
@@ -37,13 +72,17 @@ class eggBot(commands.Bot):
 
     #startup connection to discord
     async def on_ready(self):
-        await self.wait_until_ready()  # Ensure that the bot is ready before adding the cogs
-        await self.add_cog(CommandsCog(self))
-        await self.add_cog(AdminCommandsCog(self))
-        await self.add_cog(SupportCommandsCog(self))
         await self.validate_data()
-        await self.recuring_task()
         logger.info('Logged on as {0}!'.format(self.user))
+
+    async def close(self):
+        if self._recurring_task is not None:
+            self._recurring_task.cancel()
+        if self.fry_api is not None:
+            await self.fry_api.close()
+        if self.database_connection is not None:
+            self.database_connection.close()
+        await super().close()
 
     async def get_token_by_auth(self, host, user, password):
         async with aiohttp.ClientSession() as session:
@@ -186,5 +225,4 @@ intents.message_content = True
 intents.members = True
 bot = eggBot(command_prefix='!',intents=intents)
 bot.run(CONFIG["token"])
-
 

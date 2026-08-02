@@ -20,7 +20,6 @@ def admin_only():
 class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     def __init__(self, client):
         self.client = client
-        self.client.applications = {}
     
     @commands.command(description='Update dictionary values for IDs.', rest_is_raw=True)
     @admin_only()
