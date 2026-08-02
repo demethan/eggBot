@@ -383,7 +383,20 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                     ),
                 )
             if applicant:
-                await applicant.send(f"Your application was denied by {user.name}.")
+                contact_view = discord.ui.View()
+                contact_view.add_item(
+                    discord.ui.Button(
+                        label=f"Message {user.display_name}"[:80],
+                        style=discord.ButtonStyle.link,
+                        url=f"https://discord.com/users/{user.id}",
+                    )
+                )
+                await applicant.send(
+                    f"Your application was denied by **{user.display_name}**. "
+                    "If you have questions about the decision, you may contact the "
+                    "reviewing admin.",
+                    view=contact_view,
+                )
             return
 
         result = await self.application_service.approve(reaction.message.id, user.id)
