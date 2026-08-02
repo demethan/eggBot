@@ -92,6 +92,10 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             return
         statistics = self.tracking_service.server_statistics(server_name)
         embed = discord.Embed(title="Server statistics", color=color)
+        embed.description = (
+            "Initial pack dates are when EggBot first observed each pack, not necessarily "
+            "when it was originally installed."
+        )
         if not statistics:
             embed.description = f"No enabled server found for `{server_name}`."
         for item in statistics[:25]:
@@ -103,7 +107,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 )
                 pack = (
                     f"{item.current_pack} ({item.current_version})\n"
-                    f"Installed: {installed}"
+                    f"Tracking since: {installed}"
                 )
             else:
                 pack = "No tracked pack installation"
@@ -140,6 +144,12 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             return
         statistics = self.tracking_service.pack_statistics(server_name)
         embed = discord.Embed(title="Pack statistics", color=color)
+        if any(item.baseline for item in statistics):
+            embed.description = (
+                "⚠️ The first pack recorded on each server may have been installed before "
+                "EggBot began tracking. Its date and duration mean **first observed** and "
+                "**tracked duration**."
+            )
         if not statistics:
             embed.description = (
                 f"No tracked pack installations for `{server_name}`."
@@ -148,6 +158,8 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             )
         for item in statistics[:25]:
             state = "Current" if item.removed_at is None else "Removed"
+            start_label = "First observed" if item.baseline else "Installed"
+            duration_label = "Tracked duration" if item.baseline else "Installed duration"
             ended = (
                 "still installed"
                 if item.removed_at is None
@@ -157,8 +169,8 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 name=f"{item.server_name.upper()} — {item.pack_name} {item.version}",
                 value=(
                     f"**Status:** {state}\n"
-                    f"**Installed:** <t:{int(item.installed_at.timestamp())}:f> to {ended}\n"
-                    f"**Installed duration:** {item.installed_hours:.1f} h\n"
+                    f"**{start_label}:** <t:{int(item.installed_at.timestamp())}:f> to {ended}\n"
+                    f"**{duration_label}:** {item.installed_hours:.1f} h\n"
                     f"**Played:** {item.played_hours:.1f} player-hours\n"
                     f"**Sessions:** {item.sessions}\n"
                     f"**Unique players:** {item.unique_players}"

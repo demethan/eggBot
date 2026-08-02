@@ -51,4 +51,7 @@ Admins with **Manage Roles** can use these commands in the admin channel:
 Statistics begin with EggBot's first successful tracking poll; EggBot does not invent
 an earlier installation date. An installation remains current until Fry reports a
 different pack name or version. `!help serverstats` and `!help packstats` contain the
-same command requirements and usage.
+same command requirements and usage. Reports label the first pack on every server as
+**first observed** with a **tracked duration** and display a disclaimer because that
+pack may have been installed before EggBot began collecting history. Later detected
+pack changes use normal installation labels.

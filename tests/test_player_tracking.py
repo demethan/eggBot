@@ -351,6 +351,7 @@ class PlayerTrackingTests(unittest.TestCase):
         self.assertAlmostEqual(packs[0].played_hours, 1 + 5 / 60, places=5)
         self.assertEqual(packs[0].sessions, 1)
         self.assertEqual(packs[0].unique_players, 1)
+        self.assertTrue(packs[0].baseline)
 
 
 if __name__ == "__main__":

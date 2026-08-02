@@ -70,6 +70,7 @@ class PackStatistics:
     played_hours: float
     sessions: int
     unique_players: int
+    baseline: bool
 
 
 def parse_player_event(content: str) -> Optional[ParsedPlayerEvent]:
@@ -611,6 +612,11 @@ class PlayerTrackingService:
             f"""
             SELECT s.name AS server_name, p.name AS pack_name, pv.version,
                    pi.started_at, pi.ended_at,
+                   CASE WHEN pi.id = (
+                       SELECT first_pi.id FROM pack_installations AS first_pi
+                       WHERE first_pi.server_id = pi.server_id
+                       ORDER BY first_pi.started_at, first_pi.id LIMIT 1
+                   ) THEN 1 ELSE 0 END AS baseline,
                    (julianday(COALESCE(pi.ended_at, ?))
                     - julianday(pi.started_at)) * 24.0 AS installed_hours,
                    COALESCE(SUM(
@@ -643,6 +649,7 @@ class PlayerTrackingService:
                 played_hours=round(max(0.0, float(row["played_hours"])), 6),
                 sessions=int(row["sessions"]),
                 unique_players=int(row["unique_players"]),
+                baseline=bool(row["baseline"]),
             )
             for row in rows
         ]
