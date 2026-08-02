@@ -1,5 +1,7 @@
 import os
+import tempfile
 import unittest
+from pathlib import Path
 from unittest.mock import patch
 
 from cryptography.fernet import Fernet
@@ -36,6 +38,22 @@ class SecretBoxTests(unittest.TestCase):
         with patch.dict(os.environ, {SecretBox.ENVIRONMENT_KEY: key}, clear=True):
             box = SecretBox.from_environment()
         self.assertEqual(box.decrypt(box.encrypt("value")), "value")
+
+    def test_loads_owner_only_key_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "key"
+            path.write_bytes(Fernet.generate_key())
+            path.chmod(0o600)
+            box = SecretBox.from_file(path)
+        self.assertEqual(box.decrypt(box.encrypt("value")), "value")
+
+    def test_rejects_overly_permissive_key_file(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "key"
+            path.write_bytes(Fernet.generate_key())
+            path.chmod(0o644)
+            with self.assertRaisesRegex(SecretConfigurationError, "group or others"):
+                SecretBox.from_file(path)
 
 
 if __name__ == "__main__":

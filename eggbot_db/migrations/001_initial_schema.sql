@@ -163,7 +163,7 @@ CREATE TABLE application_whitelist_results (
 
 CREATE TABLE reboot_schedules (
     server_id INTEGER PRIMARY KEY REFERENCES servers(id) ON DELETE CASCADE,
-    local_time TEXT NOT NULL,
+    time_value TEXT NOT NULL,
     frequency TEXT NOT NULL,
     timezone TEXT NOT NULL,
     updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
