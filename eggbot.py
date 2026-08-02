@@ -17,6 +17,7 @@ from eggbot_db.database import Database
 from eggbot_db.repositories import ServerRepository
 from eggbot_db.secrets import SecretBox
 from fry_api import FryApiClient
+from command_errors import reaction_for_command_error
 from discord.ext import commands
 from config import CONFIG, DATA
 from config import DATA, save_data
@@ -179,24 +180,31 @@ class eggBot(commands.Bot):
 
     #error handling
     async def on_command_error(self, ctx, error):
-        logger.error(error)
-        logger.error(ctx)
+        original = getattr(error, "original", error)
+        logger.error(original)
         try:
-            embed=discord.Embed(Title="Error:", color=0x00ff00)
-            if error.param._name == "arg":
-                message = "!"+ctx.command.name+" requires an argument. Type !help to get a list"
-            if error.param._name == "key":
-                message = "!"+ctx.command.name+" requires the server name without the @.  Ex. MyFry \n"
-                message += "possible server name: "
-                embed.add_field(name="servers",value = list(DATA["server_list"].keys()), inline=False)
-            if error.param._name == "host":
-                message = "!"+ctx.command.name+" is missing the host argument. Type !help to get a list"
-                
-            if message is not None:
-                embed.add_field(name="⚠",value = message, inline=False)
-                await ctx.send(embed=embed)
-        except:
-            pass
+            await ctx.message.add_reaction(reaction_for_command_error(error))
+        except discord.HTTPException:
+            logger.exception("Unable to react to invalid command")
+
+        if isinstance(error, commands.CommandNotFound):
+            await ctx.send("Unknown command. Use `!help` to see available commands.")
+        elif isinstance(error, commands.MissingRequiredArgument):
+            await ctx.send(
+                f"Missing `{error.param.name}`. Use `!help {ctx.command.qualified_name}` "
+                "for usage."
+            )
+        elif isinstance(error, commands.CommandOnCooldown):
+            await ctx.send(f"Try again in {error.retry_after:.1f} seconds.")
+        elif isinstance(error, commands.CheckFailure):
+            await ctx.send("That command is not available to you here.")
+        elif isinstance(error, commands.UserInputError):
+            await ctx.send(
+                f"Invalid command input. Use `!help {ctx.command.qualified_name}` for usage."
+            )
+        else:
+            logger.opt(exception=original).error("Unexpected command failure")
+            await ctx.send("The command could not be completed.")
 
     # Define a function to validate DATA and set bot status
     async def validate_data(self):
