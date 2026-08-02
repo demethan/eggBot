@@ -31,3 +31,24 @@ observation and reconciled with open sessions. An online player without a Discor
 starts an `api_derived` session. A missing player is closed only after two consecutive
 successful observations report them absent, limiting false logouts from one empty or
 glitched API response. API reconciliation never duplicates an open Discord session.
+Fry's `login_time` supplies the precise session start and detects a reconnect that
+happens entirely between polls.
+
+## Server and pack history
+
+Each successful Fry poll records the normalized pack name and version. The first poll
+opens a pack installation for that server. A later name or version change closes the
+old installation, opens the new one, and attributes subsequent player sessions to the
+new installation. Pack metadata is retained with the version for later inspection.
+
+Admins with **Manage Roles** can use these commands in the admin channel:
+
+- `!serverstats` shows cumulative player-hours, sessions, unique players, and the
+  current pack for every enabled server. `!serverstats <server>` filters the report.
+- `!packstats` shows installation duration, player-hours, sessions, and unique players
+  for recorded pack versions. `!packstats <server>` filters the report.
+
+Statistics begin with EggBot's first successful tracking poll; EggBot does not invent
+an earlier installation date. An installation remains current until Fry reports a
+different pack name or version. `!help serverstats` and `!help packstats` contain the
+same command requirements and usage.

@@ -160,6 +160,13 @@ class eggBot(commands.Bot):
                 self.tracking_service.reconcile_api_snapshot(
                     server_name=server,
                     players_online=info.get("players_online", {}),
+                    pack_name=info.get("pack_name"),
+                    pack_version=info.get("pack_version"),
+                    pack_metadata={
+                        key: value
+                        for key, value in info.items()
+                        if key != "players_online"
+                    },
                 )
                 if info["players_online"].__len__() > 0:
                     DATA["server_list"][server]["players"] = info["players_online"]
@@ -179,8 +186,13 @@ class eggBot(commands.Bot):
     #gets started in class __init__
     async def recuring_task(self):
         while True:
+            try:
+                await self.store_online_users()
+            except asyncio.CancelledError:
+                raise
+            except Exception:
+                logger.exception("Fry metadata polling cycle failed")
             await asyncio.sleep(300) #every 5 min get the user online meta data.
-            await self.store_online_users()
     
     """ async def on_message(self):
         print(message.content)

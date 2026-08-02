@@ -48,6 +48,30 @@ class ReconciliationResult:
     online_players: int
 
 
+@dataclass(frozen=True)
+class ServerStatistics:
+    server_name: str
+    total_hours: float
+    sessions: int
+    unique_players: int
+    current_pack: Optional[str]
+    current_version: Optional[str]
+    installed_at: Optional[datetime]
+
+
+@dataclass(frozen=True)
+class PackStatistics:
+    server_name: str
+    pack_name: str
+    version: str
+    installed_at: datetime
+    removed_at: Optional[datetime]
+    installed_hours: float
+    played_hours: float
+    sessions: int
+    unique_players: int
+
+
 def parse_player_event(content: str) -> Optional[ParsedPlayerEvent]:
     match = PLAYER_EVENT_PATTERN.fullmatch(content.strip())
     if match is None:
@@ -151,14 +175,27 @@ class PlayerTrackingService:
                 )
 
             if parsed.event_type == "join":
+                installation = self.connection.execute(
+                    """
+                    SELECT id FROM pack_installations
+                    WHERE server_id = ? AND ended_at IS NULL
+                    """,
+                    (server["id"],),
+                ).fetchone()
                 self.connection.execute(
                     """
                     INSERT OR IGNORE INTO player_sessions(
-                        player_id, server_id, started_at, start_source,
-                        confidence, start_event_id
-                    ) VALUES (?, ?, ?, 'discord', 'exact', ?)
+                        player_id, server_id, pack_installation_id, started_at,
+                        start_source, confidence, start_event_id
+                    ) VALUES (?, ?, ?, ?, 'discord', 'exact', ?)
                     """,
-                    (player_id, server["id"], timestamp, event_id),
+                    (
+                        player_id,
+                        server["id"],
+                        installation["id"] if installation else None,
+                        timestamp,
+                        event_id,
+                    ),
                 )
             else:
                 self.connection.execute(
@@ -251,6 +288,9 @@ class PlayerTrackingService:
         *,
         server_name: str,
         players_online,
+        pack_name: Optional[str] = None,
+        pack_version: Optional[str] = None,
+        pack_metadata: Optional[dict] = None,
         observed_at: Optional[datetime] = None,
     ) -> ReconciliationResult:
         server = self.connection.execute(
@@ -276,6 +316,8 @@ class PlayerTrackingService:
         timestamp = (observed_at or datetime.now(timezone.utc)).astimezone(
             timezone.utc
         ).isoformat(timespec="seconds")
+        normalized_pack_name = str(pack_name or "").strip()
+        normalized_pack_version = str(pack_version or "").strip()
         previous = self.connection.execute(
             """
             SELECT raw_json FROM server_observations
@@ -298,22 +340,113 @@ class PlayerTrackingService:
         closed = 0
         try:
             self.connection.execute("BEGIN IMMEDIATE")
+            pack_version_id = None
+            pack_installation_id = None
+            pack_changed = False
+            if normalized_pack_name and normalized_pack_version:
+                self.connection.execute(
+                    "INSERT OR IGNORE INTO packs(name) VALUES (?)",
+                    (normalized_pack_name,),
+                )
+                pack = self.connection.execute(
+                    "SELECT id FROM packs WHERE name = ? COLLATE NOCASE",
+                    (normalized_pack_name,),
+                ).fetchone()
+                metadata_json = json.dumps(
+                    pack_metadata or {}, sort_keys=True, default=str
+                )
+                self.connection.execute(
+                    """
+                    INSERT INTO pack_versions(pack_id, version, metadata_json)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(pack_id, version) DO UPDATE
+                    SET metadata_json = excluded.metadata_json
+                    """,
+                    (pack["id"], normalized_pack_version, metadata_json),
+                )
+                version = self.connection.execute(
+                    """
+                    SELECT id FROM pack_versions
+                    WHERE pack_id = ? AND version = ? COLLATE NOCASE
+                    """,
+                    (pack["id"], normalized_pack_version),
+                ).fetchone()
+                pack_version_id = version["id"]
+                installation = self.connection.execute(
+                    """
+                    SELECT id, pack_version_id FROM pack_installations
+                    WHERE server_id = ? AND ended_at IS NULL
+                    """,
+                    (server["id"],),
+                ).fetchone()
+                if installation is None or installation["pack_version_id"] != pack_version_id:
+                    pack_changed = installation is not None
+                    if installation is not None:
+                        self.connection.execute(
+                            """
+                            UPDATE pack_installations
+                            SET ended_at = ?, end_source = 'api'
+                            WHERE id = ?
+                            """,
+                            (timestamp, installation["id"]),
+                        )
+                    pack_installation_id = self.connection.execute(
+                        """
+                        INSERT INTO pack_installations(
+                            server_id, pack_version_id, started_at, start_source
+                        ) VALUES (?, ?, ?, 'api')
+                        """,
+                        (server["id"], pack_version_id, timestamp),
+                    ).lastrowid
+                else:
+                    pack_installation_id = installation["id"]
+
+                if pack_changed:
+                    cursor = self.connection.execute(
+                        """
+                        UPDATE player_sessions
+                        SET ended_at = ?, end_source = 'api',
+                            confidence = 'api_derived'
+                        WHERE server_id = ? AND ended_at IS NULL
+                        """,
+                        (timestamp, server["id"]),
+                    )
+                    closed += cursor.rowcount
+                else:
+                    self.connection.execute(
+                        """
+                        UPDATE player_sessions SET pack_installation_id = ?
+                        WHERE server_id = ? AND ended_at IS NULL
+                          AND pack_installation_id IS NULL
+                        """,
+                        (pack_installation_id, server["id"]),
+                    )
+
             self.connection.execute(
                 """
                 INSERT OR REPLACE INTO server_observations(
-                    server_id, observed_at, status, online_count, raw_json
-                ) VALUES (?, ?, 'success', ?, ?)
+                    server_id, observed_at, status, pack_version_id,
+                    online_count, raw_json
+                ) VALUES (?, ?, 'success', ?, ?, ?)
                 """,
                 (
                     server["id"],
                     timestamp,
+                    pack_version_id,
                     len(names),
-                    json.dumps({"players_online": sorted(names)}),
+                    json.dumps(
+                        {
+                            "players_online": sorted(names),
+                            "pack_name": normalized_pack_name or None,
+                            "pack_version": normalized_pack_version or None,
+                        },
+                        sort_keys=True,
+                    ),
                 ),
             )
             for name in names:
                 login_at = login_times.get(name.casefold())
-                if login_at is not None and login_at > timestamp:
+                if pack_changed or (login_at is not None and login_at > timestamp):
                     login_at = None
                 player = self.connection.execute(
                     "SELECT id FROM players WHERE current_name = ? COLLATE NOCASE",
@@ -376,10 +509,11 @@ class PlayerTrackingService:
                 cursor = self.connection.execute(
                     """
                     INSERT OR IGNORE INTO player_sessions(
-                        player_id, server_id, started_at, start_source, confidence
-                    ) VALUES (?, ?, ?, 'api', 'api_derived')
+                        player_id, server_id, pack_installation_id, started_at,
+                        start_source, confidence
+                    ) VALUES (?, ?, ?, ?, 'api', 'api_derived')
                     """,
-                    (player_id, server["id"], started_at),
+                    (player_id, server["id"], pack_installation_id, started_at),
                 )
                 started += cursor.rowcount
 
@@ -415,6 +549,104 @@ class PlayerTrackingService:
             raise
         return ReconciliationResult(started, closed, len(names))
 
+    def server_statistics(
+        self,
+        server_name: Optional[str] = None,
+        *,
+        now: Optional[datetime] = None,
+    ) -> list[ServerStatistics]:
+        current_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        current_timestamp = current_time.isoformat(timespec="seconds")
+        name_filter = "" if server_name is None else "AND s.name = ? COLLATE NOCASE"
+        parameters = [current_timestamp]
+        if server_name is not None:
+            parameters.append(server_name.strip())
+        rows = self.connection.execute(
+            f"""
+            SELECT s.name,
+                   COALESCE(SUM(
+                       (julianday(COALESCE(ps.ended_at, ?))
+                        - julianday(ps.started_at)) * 24.0
+                   ), 0.0) AS total_hours,
+                   COUNT(ps.id) AS sessions,
+                   COUNT(DISTINCT ps.player_id) AS unique_players,
+                   p.name AS pack_name,
+                   pv.version AS pack_version,
+                   pi.started_at AS installed_at
+            FROM servers AS s
+            LEFT JOIN player_sessions AS ps ON ps.server_id = s.id
+            LEFT JOIN pack_installations AS pi
+                   ON pi.server_id = s.id AND pi.ended_at IS NULL
+            LEFT JOIN pack_versions AS pv ON pv.id = pi.pack_version_id
+            LEFT JOIN packs AS p ON p.id = pv.pack_id
+            WHERE s.enabled = 1 {name_filter}
+            GROUP BY s.id
+            ORDER BY s.name COLLATE NOCASE
+            """,
+            parameters,
+        ).fetchall()
+        return [
+            ServerStatistics(
+                server_name=row["name"],
+                total_hours=round(max(0.0, float(row["total_hours"])), 6),
+                sessions=int(row["sessions"]),
+                unique_players=int(row["unique_players"]),
+                current_pack=row["pack_name"],
+                current_version=row["pack_version"],
+                installed_at=self._stored_datetime(row["installed_at"]),
+            )
+            for row in rows
+        ]
+
+    def pack_statistics(
+        self,
+        server_name: Optional[str] = None,
+        *,
+        now: Optional[datetime] = None,
+    ) -> list[PackStatistics]:
+        current_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        current_timestamp = current_time.isoformat(timespec="seconds")
+        name_filter = "" if server_name is None else "AND s.name = ? COLLATE NOCASE"
+        rows = self.connection.execute(
+            f"""
+            SELECT s.name AS server_name, p.name AS pack_name, pv.version,
+                   pi.started_at, pi.ended_at,
+                   (julianday(COALESCE(pi.ended_at, ?))
+                    - julianday(pi.started_at)) * 24.0 AS installed_hours,
+                   COALESCE(SUM(
+                       (julianday(MIN(COALESCE(ps.ended_at, ?),
+                                      COALESCE(pi.ended_at, ?)))
+                        - julianday(MAX(ps.started_at, pi.started_at))) * 24.0
+                   ), 0.0) AS played_hours,
+                   COUNT(ps.id) AS sessions,
+                   COUNT(DISTINCT ps.player_id) AS unique_players
+            FROM pack_installations AS pi
+            JOIN servers AS s ON s.id = pi.server_id
+            JOIN pack_versions AS pv ON pv.id = pi.pack_version_id
+            JOIN packs AS p ON p.id = pv.pack_id
+            LEFT JOIN player_sessions AS ps ON ps.pack_installation_id = pi.id
+            WHERE 1 = 1 {name_filter}
+            GROUP BY pi.id
+            ORDER BY pi.started_at DESC, s.name COLLATE NOCASE
+            """,
+            [current_timestamp, current_timestamp, current_timestamp]
+            + ([] if server_name is None else [server_name.strip()]),
+        ).fetchall()
+        return [
+            PackStatistics(
+                server_name=row["server_name"],
+                pack_name=row["pack_name"],
+                version=row["version"],
+                installed_at=self._stored_datetime(row["started_at"]),
+                removed_at=self._stored_datetime(row["ended_at"]),
+                installed_hours=round(max(0.0, float(row["installed_hours"])), 6),
+                played_hours=round(max(0.0, float(row["played_hours"])), 6),
+                sessions=int(row["sessions"]),
+                unique_players=int(row["unique_players"]),
+            )
+            for row in rows
+        ]
+
     @staticmethod
     def _api_login_time(details) -> Optional[str]:
         if not isinstance(details, dict):
@@ -429,3 +661,7 @@ class PlayerTrackingService:
         if parsed.tzinfo is None:
             parsed = parsed.replace(tzinfo=timezone.utc)
         return parsed.astimezone(timezone.utc).isoformat(timespec="seconds")
+
+    @staticmethod
+    def _stored_datetime(value: Optional[str]) -> Optional[datetime]:
+        return datetime.fromisoformat(value) if value else None

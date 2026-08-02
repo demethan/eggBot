@@ -227,6 +227,131 @@ class PlayerTrackingTests(unittest.TestCase):
             "2026-08-02T12:00:00+00:00",
         ])
 
+    def test_api_metadata_opens_pack_installation_and_attaches_sessions(self):
+        self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={
+                "Demethan": {"login_time": "2026-08-02 11:55:00"}
+            },
+            pack_name=" Test Pack ",
+            pack_version=" 1.2.3 ",
+            pack_metadata={"pack_url": "https://example/pack"},
+            observed_at=datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc),
+        )
+
+        installation = self.connection.execute(
+            """
+            SELECT pi.*, p.name, pv.version, pv.metadata_json
+            FROM pack_installations pi
+            JOIN pack_versions pv ON pv.id = pi.pack_version_id
+            JOIN packs p ON p.id = pv.pack_id
+            """
+        ).fetchone()
+        session = self.connection.execute(
+            "SELECT * FROM player_sessions"
+        ).fetchone()
+        observation = self.connection.execute(
+            "SELECT * FROM server_observations"
+        ).fetchone()
+        self.assertEqual(installation["name"], "Test Pack")
+        self.assertEqual(installation["version"], "1.2.3")
+        self.assertEqual(installation["started_at"], "2026-08-02T12:00:00+00:00")
+        self.assertIn("pack_url", installation["metadata_json"])
+        self.assertEqual(session["pack_installation_id"], installation["id"])
+        self.assertEqual(observation["pack_version_id"], installation["pack_version_id"])
+
+    def test_pack_change_closes_installation_and_splits_online_session(self):
+        player = {"Demethan": {"login_time": "2026-08-02 11:55:00"}}
+        self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online=player,
+            pack_name="Pack A",
+            pack_version="1.0",
+            observed_at=datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc),
+        )
+        result = self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online=player,
+            pack_name="Pack B",
+            pack_version="2.0",
+            observed_at=datetime(2026, 8, 2, 13, 0, tzinfo=timezone.utc),
+        )
+
+        installations = self.connection.execute(
+            "SELECT * FROM pack_installations ORDER BY started_at"
+        ).fetchall()
+        sessions = self.connection.execute(
+            "SELECT * FROM player_sessions ORDER BY started_at"
+        ).fetchall()
+        self.assertEqual(result.closed_sessions, 1)
+        self.assertEqual(result.started_sessions, 1)
+        self.assertEqual(installations[0]["ended_at"], "2026-08-02T13:00:00+00:00")
+        self.assertIsNone(installations[1]["ended_at"])
+        self.assertEqual(sessions[0]["ended_at"], "2026-08-02T13:00:00+00:00")
+        self.assertEqual(sessions[1]["started_at"], "2026-08-02T13:00:00+00:00")
+        self.assertEqual(sessions[1]["pack_installation_id"], installations[1]["id"])
+
+    def test_discord_join_uses_current_pack_installation(self):
+        self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={},
+            pack_name="Test Pack",
+            pack_version="1.0",
+            observed_at=datetime(2026, 8, 2, 11, 55, tzinfo=timezone.utc),
+        )
+        self.ingest(1, "Demethan has joined the server.", minute=0)
+
+        session = self.connection.execute(
+            "SELECT * FROM player_sessions"
+        ).fetchone()
+        installation = self.connection.execute(
+            "SELECT * FROM pack_installations"
+        ).fetchone()
+        self.assertEqual(session["pack_installation_id"], installation["id"])
+        self.assertEqual(session["start_source"], "discord")
+
+    def test_server_and_pack_statistics_report_tracked_time(self):
+        self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={
+                "Demethan": {"login_time": "2026-08-02 11:55:00"}
+            },
+            pack_name="Test Pack",
+            pack_version="1.0",
+            observed_at=datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc),
+        )
+        self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={},
+            pack_name="Test Pack",
+            pack_version="1.0",
+            observed_at=datetime(2026, 8, 2, 13, 0, tzinfo=timezone.utc),
+        )
+        self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={},
+            pack_name="Test Pack",
+            pack_version="1.0",
+            observed_at=datetime(2026, 8, 2, 13, 5, tzinfo=timezone.utc),
+        )
+
+        servers = self.tracking.server_statistics(
+            "BACON", now=datetime(2026, 8, 2, 14, 0, tzinfo=timezone.utc)
+        )
+        packs = self.tracking.pack_statistics(
+            "BACON", now=datetime(2026, 8, 2, 14, 0, tzinfo=timezone.utc)
+        )
+        self.assertEqual(len(servers), 1)
+        self.assertAlmostEqual(servers[0].total_hours, 1 + 10 / 60, places=5)
+        self.assertEqual(servers[0].sessions, 1)
+        self.assertEqual(servers[0].unique_players, 1)
+        self.assertEqual(servers[0].current_pack, "Test Pack")
+        self.assertEqual(len(packs), 1)
+        self.assertAlmostEqual(packs[0].installed_hours, 2.0)
+        self.assertAlmostEqual(packs[0].played_hours, 1 + 5 / 60, places=5)
+        self.assertEqual(packs[0].sessions, 1)
+        self.assertEqual(packs[0].unique_players, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

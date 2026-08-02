@@ -73,6 +73,107 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         await ctx.send(embed=embed)
 
     @commands.command(
+        brief='Show tracked activity and current pack by server',
+        description=(
+            'Admin: Show cumulative tracked play hours, sessions, players, and the '
+            'current pack. Usage: !serverstats [server].'
+        ),
+    )
+    @admin_only()
+    @commands.has_guild_permissions(manage_roles=True)
+    async def serverstats(self, ctx, *, server_name=None):
+        """Admin: Show tracked activity and current pack by server.
+
+        Usage: !serverstats or !serverstats <server>
+        Requires Manage Roles permission and must be used in the admin channel.
+        """
+        if self.tracking_service is None:
+            await ctx.send("Server statistics are unavailable.")
+            return
+        statistics = self.tracking_service.server_statistics(server_name)
+        embed = discord.Embed(title="Server statistics", color=color)
+        if not statistics:
+            embed.description = f"No enabled server found for `{server_name}`."
+        for item in statistics[:25]:
+            if item.current_pack:
+                installed = (
+                    f"<t:{int(item.installed_at.timestamp())}:R>"
+                    if item.installed_at
+                    else "unknown"
+                )
+                pack = (
+                    f"{item.current_pack} ({item.current_version})\n"
+                    f"Installed: {installed}"
+                )
+            else:
+                pack = "No tracked pack installation"
+            embed.add_field(
+                name=item.server_name.upper(),
+                value=(
+                    f"**Played:** {item.total_hours:.1f} h\n"
+                    f"**Sessions:** {item.sessions}\n"
+                    f"**Unique players:** {item.unique_players}\n"
+                    f"**Current pack:** {pack}"
+                ),
+                inline=False,
+            )
+        embed.set_footer(text="Statistics begin when EggBot starts tracking Fry metadata.")
+        await ctx.send(embed=embed)
+
+    @commands.command(
+        brief='Show modpack installation and play statistics',
+        description=(
+            'Admin: Show pack/version installation duration and tracked player-hours. '
+            'Usage: !packstats [server].'
+        ),
+    )
+    @admin_only()
+    @commands.has_guild_permissions(manage_roles=True)
+    async def packstats(self, ctx, *, server_name=None):
+        """Admin: Show modpack installation and play statistics.
+
+        Usage: !packstats or !packstats <server>
+        Requires Manage Roles permission and must be used in the admin channel.
+        """
+        if self.tracking_service is None:
+            await ctx.send("Pack statistics are unavailable.")
+            return
+        statistics = self.tracking_service.pack_statistics(server_name)
+        embed = discord.Embed(title="Pack statistics", color=color)
+        if not statistics:
+            embed.description = (
+                f"No tracked pack installations for `{server_name}`."
+                if server_name
+                else "No tracked pack installations yet."
+            )
+        for item in statistics[:25]:
+            state = "Current" if item.removed_at is None else "Removed"
+            ended = (
+                "still installed"
+                if item.removed_at is None
+                else f"<t:{int(item.removed_at.timestamp())}:f>"
+            )
+            embed.add_field(
+                name=f"{item.server_name.upper()} — {item.pack_name} {item.version}",
+                value=(
+                    f"**Status:** {state}\n"
+                    f"**Installed:** <t:{int(item.installed_at.timestamp())}:f> to {ended}\n"
+                    f"**Installed duration:** {item.installed_hours:.1f} h\n"
+                    f"**Played:** {item.played_hours:.1f} player-hours\n"
+                    f"**Sessions:** {item.sessions}\n"
+                    f"**Unique players:** {item.unique_players}"
+                ),
+                inline=False,
+            )
+        if len(statistics) > 25:
+            embed.set_footer(
+                text=f"Showing 25 of {len(statistics)} installations. Filter by server."
+            )
+        else:
+            embed.set_footer(text="Statistics begin with the first recorded Fry poll.")
+        await ctx.send(embed=embed)
+
+    @commands.command(
         brief='Match an approved Discord user and Minecraft IGN',
         description=(
             'Admin: Find an approved player association. '
