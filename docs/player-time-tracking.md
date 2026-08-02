@@ -44,9 +44,11 @@ new installation. Pack metadata is retained with the version for later inspectio
 Admins with **Manage Roles** can use these commands in the admin channel:
 
 - `!serverstats` shows cumulative player-hours, sessions, unique players, and the
-  current pack for every enabled server. `!serverstats <server>` filters the report.
+  current pack for every enabled server. The global view is condensed;
+  `!serverstats <server>` shows the complete report for one server.
 - `!packstats` shows installation duration, player-hours, sessions, and unique players
-  for recorded pack versions. `!packstats <server>` filters the report.
+  for recorded pack versions. The global view shows a short current-pack summary;
+  `!packstats <server>` shows that server's complete installation history.
 
 Statistics begin with EggBot's first successful tracking poll; EggBot does not invent
 an earlier installation date. An installation remains current until Fry reports a

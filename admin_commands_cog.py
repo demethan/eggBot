@@ -95,6 +95,21 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         if not statistics:
             embed.description = f"No enabled server found for `{server_name}`."
         for item in statistics[:25]:
+            if server_name is None:
+                current_pack = (
+                    f"{item.current_pack} {item.current_version}"
+                    if item.current_pack
+                    else "No tracked pack"
+                )
+                embed.add_field(
+                    name=item.server_name.upper(),
+                    value=(
+                        f"{item.total_hours:.1f} h • {item.unique_players} players • "
+                        f"{current_pack}"
+                    ),
+                    inline=False,
+                )
+                continue
             if item.current_pack:
                 installed = (
                     f"<t:{int(item.installed_at.timestamp())}:R>"
@@ -146,7 +161,25 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 if server_name
                 else "No tracked pack installations yet."
             )
-        for item in statistics[:25]:
+        displayed_statistics = statistics
+        if server_name is None:
+            displayed_statistics = [
+                item for item in statistics if item.removed_at is None
+            ]
+            if statistics and not displayed_statistics:
+                embed.description = "No current pack installations are open."
+        for item in displayed_statistics[:25]:
+            if server_name is None:
+                embed.add_field(
+                    name=item.server_name.upper(),
+                    value=(
+                        f"{item.pack_name} {item.version} • "
+                        f"{item.played_hours:.1f} player-hours • "
+                        f"{item.installed_hours:.1f} h tracked"
+                    ),
+                    inline=False,
+                )
+                continue
             state = "Current" if item.removed_at is None else "Removed"
             start_label = "First observed" if item.baseline else "Installed"
             duration_label = "Tracked duration" if item.baseline else "Installed duration"
@@ -167,9 +200,12 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 ),
                 inline=False,
             )
-        if len(statistics) > 25:
+        if len(displayed_statistics) > 25:
             embed.set_footer(
-                text=f"Showing 25 of {len(statistics)} installations. Filter by server."
+                text=(
+                    f"Showing 25 of {len(displayed_statistics)} installations. "
+                    "Filter by server."
+                )
             )
         else:
             embed.set_footer(text="Statistics begin when EggBot starts tracking Fry metadata.")
