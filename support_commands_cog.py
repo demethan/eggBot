@@ -321,7 +321,11 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
 
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
-        if user.bot or reaction.message.channel.id != int(DATA["adminChannelID"]):
+        if user.bot:
+            return
+        if await self._handle_followup_reaction(reaction, user):
+            return
+        if reaction.message.channel.id != int(DATA["adminChannelID"]):
             return
         emoji = str(reaction.emoji)
         if emoji not in ("👍", "👎") or not self._reviewer_allowed(user):
@@ -383,19 +387,16 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                     ),
                 )
             if applicant:
-                contact_view = discord.ui.View()
-                contact_view.add_item(
-                    discord.ui.Button(
-                        label=f"Message {user.display_name}"[:80],
-                        style=discord.ButtonStyle.link,
-                        url=f"https://discord.com/users/{user.id}",
-                    )
-                )
-                await applicant.send(
+                followup_message = await applicant.send(
                     f"Your application was denied by **{user.display_name}**. "
-                    "If you have questions about the decision, you may contact the "
-                    "reviewing admin.",
-                    view=contact_view,
+                    "Would you like an admin to contact you?\n"
+                    "📩 Request an admin follow-up\n"
+                    "🔴 No follow-up",
+                )
+                await followup_message.add_reaction("📩")
+                await followup_message.add_reaction("🔴")
+                self.application_service.offer_followup(
+                    result.application.id, followup_message.id
                 )
             return
 
@@ -454,6 +455,73 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             )
         elif result.status == "failed":
             logger.error("Unexpected application processing failure")
+
+    async def _handle_followup_reaction(self, reaction, user):
+        if self.application_service is None or str(reaction.emoji) not in ("📩", "🔴"):
+            return False
+        followup = self.application_service.get_followup_by_message(reaction.message.id)
+        if followup is None:
+            return False
+        application = self.application_service.get_application(
+            followup.application_id
+        )
+        if application is None or application.discord_user_id != user.id:
+            return True
+
+        requested = str(reaction.emoji) == "📩"
+        updated = self.application_service.respond_to_followup(
+            reaction.message.id, requested
+        )
+        if updated is None:
+            return True
+        await reaction.message.clear_reactions()
+        if not requested:
+            await reaction.message.edit(
+                content="No admin follow-up requested."
+            )
+            return True
+
+        await reaction.message.edit(
+            content="Your follow-up request was sent to the admins. An admin can contact you directly."
+        )
+        admin_channel = self.client.get_channel(int(DATA["adminChannelID"]))
+        if admin_channel is None:
+            admin_channel = await self.client.fetch_channel(int(DATA["adminChannelID"]))
+        reviewer_role = discord.utils.get(
+            admin_channel.guild.roles,
+            id=int(DATA.get("applicationReviewerRoleID", 0)),
+        )
+        reviewer = None
+        if application.reviewer_discord_user_id:
+            reviewer = admin_channel.guild.get_member(
+                application.reviewer_discord_user_id
+            )
+        mentions = []
+        if reviewer_role:
+            mentions.append(reviewer_role.mention)
+        if reviewer:
+            mentions.append(reviewer.mention)
+        await admin_channel.send(
+            content=" ".join(mentions) or None,
+            embed=discord.Embed(
+                title="Denied applicant requests a follow-up",
+                description=(
+                    f"**Applicant:** <@{application.discord_user_id}> "
+                    f"(`{application.discord_user_id}`)\n"
+                    f"**Minecraft IGN:** {application.minecraft_name}\n"
+                    f"**Application:** #{application.id}\n"
+                    f"**Denied by:** "
+                    f"{reviewer.mention if reviewer else application.reviewer_discord_user_id}"
+                ),
+                color=0xF1C40F,
+            ),
+            allowed_mentions=discord.AllowedMentions(
+                everyone=False,
+                users=[reviewer] if reviewer else False,
+                roles=[reviewer_role] if reviewer_role else False,
+            ),
+        )
+        return True
 
     async def reconcile_pending_reviews(self):
         """Process one clear admin decision that arrived while EggBot was offline."""

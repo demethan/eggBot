@@ -43,6 +43,15 @@ class PlayerDiscordLink:
     updated_at: str
 
 
+@dataclass(frozen=True)
+class ApplicationFollowup:
+    application_id: int
+    prompt_message_id: int
+    status: str
+    offered_at: str
+    responded_at: Optional[str]
+
+
 class ApplicationRepository:
     def __init__(self, connection: sqlite3.Connection):
         self.connection = connection
@@ -254,6 +263,51 @@ class ApplicationRepository:
             (application_id,),
         ).fetchall()
         return {row["server_id"]: row["status"] for row in rows}
+
+    def offer_followup(
+        self, application_id: int, prompt_message_id: int
+    ) -> ApplicationFollowup:
+        self.connection.execute(
+            """
+            INSERT INTO application_followup_requests(
+                application_id, prompt_message_id, status, offered_at
+            ) VALUES (?, ?, 'offered', ?)
+            ON CONFLICT(application_id) DO UPDATE SET
+                prompt_message_id = excluded.prompt_message_id,
+                status = 'offered',
+                offered_at = excluded.offered_at,
+                responded_at = NULL
+            """,
+            (application_id, prompt_message_id, utc_now()),
+        )
+        return self.get_followup_by_message(prompt_message_id)
+
+    def get_followup_by_message(
+        self, prompt_message_id: int
+    ) -> Optional[ApplicationFollowup]:
+        row = self.connection.execute(
+            """
+            SELECT * FROM application_followup_requests
+            WHERE prompt_message_id = ?
+            """,
+            (prompt_message_id,),
+        ).fetchone()
+        return None if row is None else ApplicationFollowup(**dict(row))
+
+    def respond_to_followup(
+        self, prompt_message_id: int, status: str
+    ) -> Optional[ApplicationFollowup]:
+        cursor = self.connection.execute(
+            """
+            UPDATE application_followup_requests
+            SET status = ?, responded_at = ?
+            WHERE prompt_message_id = ? AND status = 'offered'
+            """,
+            (status, utc_now(), prompt_message_id),
+        )
+        if cursor.rowcount != 1:
+            return None
+        return self.get_followup_by_message(prompt_message_id)
 
     def record_player_link(
         self,

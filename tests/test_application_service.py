@@ -173,6 +173,20 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
             {1: "present", 2: "failed"},
         )
 
+    def test_denial_followup_offer_is_durable_and_single_response(self):
+        service = self.service(FakeFryClient())
+        application = self.submit(service)
+        denied = service.deny(application.admin_message_id, 999)
+
+        offered = service.offer_followup(denied.application.id, 555)
+        requested = service.respond_to_followup(555, True)
+        duplicate = service.respond_to_followup(555, False)
+
+        self.assertEqual(offered.status, "offered")
+        self.assertEqual(requested.status, "requested")
+        self.assertIsNotNone(requested.responded_at)
+        self.assertIsNone(duplicate)
+
     def test_pending_list_excludes_completed_applications(self):
         service = self.service(FakeFryClient())
         pending = self.submit(service)

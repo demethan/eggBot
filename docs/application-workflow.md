@@ -45,9 +45,11 @@ and stores the per-server result. If the denied IGN is still present, the retain
 application message is annotated and the configured reviewer role receives an alert.
 EggBot does not remove the IGN automatically.
 
-The denied applicant receives a private, optional `Message reviewer` link to the
-denying admin's Discord profile. Whether a conversation can be started remains subject
-to Discord's privacy settings.
+The denied applicant receives a private reaction prompt: 📩 requests an admin
+follow-up and 🔴 declines. Requests are stored in SQLite and notify both the reviewer
+role and denying admin with the applicant's Discord account, IGN, and application ID.
+An admin can then choose to contact the applicant, subject to Discord's privacy
+settings.
 
 After the role is assigned, EggBot stores the stable Discord user ID, current Discord
 username and server display name alongside the Minecraft IGN. Admins with **Manage

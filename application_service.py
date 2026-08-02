@@ -7,7 +7,12 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from eggbot_db.applications import Application, ApplicationRepository, PlayerDiscordLink
+from eggbot_db.applications import (
+    Application,
+    ApplicationFollowup,
+    ApplicationRepository,
+    PlayerDiscordLink,
+)
 from eggbot_db.repositories import Server, ServerRepository
 from fry_api import FryApiClient, FryErrorCode, FryResult
 
@@ -79,6 +84,9 @@ class ApplicationService:
     def get_by_admin_message(self, message_id: int) -> Optional[Application]:
         return self.applications.get_by_admin_message(message_id)
 
+    def get_application(self, application_id: int) -> Optional[Application]:
+        return self.applications.get(application_id)
+
     def list_pending(self) -> list[Application]:
         return self.applications.list_pending()
 
@@ -106,6 +114,29 @@ class ApplicationService:
 
     def find_player_links(self, query: str) -> list[PlayerDiscordLink]:
         return self.applications.find_player_links(query)
+
+    def offer_followup(
+        self, application_id: int, prompt_message_id: int
+    ) -> ApplicationFollowup:
+        followup = self.applications.offer_followup(
+            application_id, prompt_message_id
+        )
+        self.connection.commit()
+        return followup
+
+    def get_followup_by_message(
+        self, prompt_message_id: int
+    ) -> Optional[ApplicationFollowup]:
+        return self.applications.get_followup_by_message(prompt_message_id)
+
+    def respond_to_followup(
+        self, prompt_message_id: int, requested: bool
+    ) -> Optional[ApplicationFollowup]:
+        followup = self.applications.respond_to_followup(
+            prompt_message_id, "requested" if requested else "declined"
+        )
+        self.connection.commit()
+        return followup
 
     async def _whitelist_server(
         self,
