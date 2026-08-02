@@ -37,6 +37,11 @@ The original admin message is edited with the final or retry status and is never
 deleted. If role assignment fails after whitelisting, the application returns to a
 retryable state; completed FryingPan2 calls are not repeated.
 
+After denial, EggBot performs a read-only check of every enabled FryingPan whitelist
+and stores the per-server result. If the denied IGN is still present, the retained
+application message is annotated and the configured reviewer role receives an alert.
+EggBot does not remove the IGN automatically.
+
 After the role is assigned, EggBot stores the stable Discord user ID, current Discord
 username and server display name alongside the Minecraft IGN. Admins with **Manage
 Roles** can query either side of the association in the admin channel with

@@ -14,15 +14,18 @@ from fry_api import FryErrorCode, FryResult
 
 
 class FakeFryClient:
-    def __init__(self, failures=None, already=None, pause=None):
+    def __init__(self, failures=None, already=None, pause=None, contains_failures=None):
         self.failures = set(failures or ())
         self.already = set(already or ())
         self.pause = pause
+        self.contains_failures = set(contains_failures or ())
         self.contains_calls = []
         self.add_calls = []
 
     async def whitelist_contains(self, server, name):
         self.contains_calls.append((server.name, name))
+        if server.name in self.contains_failures:
+            return FryResult.failure(FryErrorCode.CONNECTION_ERROR, retryable=True)
         return FryResult.success(server.name in self.already)
 
     async def whitelist_add(self, server, name):
@@ -154,6 +157,21 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(denied.status, "denied")
         self.assertEqual(approved.status, "already_decided")
+
+    async def test_denial_audit_records_present_absent_and_failed_servers(self):
+        fry = FakeFryClient(already={"BACON"}, contains_failures={"EGGS"})
+        service = self.service(fry)
+        application = self.submit(service)
+        denied = service.deny(application.admin_message_id, 999)
+
+        audit = await service.audit_denied_whitelist(denied.application)
+
+        self.assertEqual(audit["BACON"].status, "present")
+        self.assertEqual(audit["EGGS"].status, "failed")
+        self.assertEqual(
+            service.applications.denial_whitelist_checks(application.id),
+            {1: "present", 2: "failed"},
+        )
 
     def test_pending_list_excludes_completed_applications(self):
         service = self.service(FakeFryClient())

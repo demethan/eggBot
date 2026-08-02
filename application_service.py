@@ -193,6 +193,37 @@ class ApplicationService:
             self.connection.commit()
             return DecisionResult("failed", application, {}, "Unexpected processing failure")
 
+    async def audit_denied_whitelist(
+        self, application: Application
+    ) -> Dict[str, ServerWhitelistOutcome]:
+        """Read every enabled whitelist and persist the post-denial audit."""
+        servers = self.servers.list_enabled()
+        checks = await asyncio.gather(
+            *(
+                self.fry.whitelist_contains(server, application.minecraft_name)
+                for server in servers
+            ),
+            return_exceptions=True,
+        )
+        outcomes = {}
+        for server, check in zip(servers, checks):
+            if isinstance(check, Exception):
+                outcome = ServerWhitelistOutcome("failed", "internal_error")
+            elif check.ok:
+                outcome = ServerWhitelistOutcome(
+                    "present" if check.value else "absent",
+                    "Still whitelisted" if check.value else "Not whitelisted",
+                )
+            else:
+                failure = self._failure_outcome(check)
+                outcome = ServerWhitelistOutcome(failure.status, failure.message)
+            outcomes[server.name] = outcome
+            self.applications.record_denial_whitelist_check(
+                application.id, server.id, outcome.status, outcome.message
+            )
+        self.connection.commit()
+        return outcomes
+
     def deny(self, admin_message_id: int, reviewer_id: int) -> DecisionResult:
         application = self.applications.get_by_admin_message(admin_message_id)
         if application is None:

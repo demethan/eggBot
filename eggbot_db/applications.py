@@ -225,6 +225,36 @@ class ApplicationRepository:
             (application_id, server_id, utc_now(), status, response_message),
         )
 
+    def record_denial_whitelist_check(
+        self,
+        application_id: int,
+        server_id: int,
+        status: str,
+        response_message: Optional[str] = None,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO application_denial_whitelist_checks(
+                application_id, server_id, checked_at, status, response_message
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(application_id, server_id) DO UPDATE SET
+                checked_at = excluded.checked_at,
+                status = excluded.status,
+                response_message = excluded.response_message
+            """,
+            (application_id, server_id, utc_now(), status, response_message),
+        )
+
+    def denial_whitelist_checks(self, application_id: int) -> dict[int, str]:
+        rows = self.connection.execute(
+            """
+            SELECT server_id, status FROM application_denial_whitelist_checks
+            WHERE application_id = ?
+            """,
+            (application_id,),
+        ).fetchall()
+        return {row["server_id"]: row["status"] for row in rows}
+
     def record_player_link(
         self,
         application_id: int,

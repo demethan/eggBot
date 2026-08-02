@@ -341,10 +341,44 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             result = self.application_service.deny(reaction.message.id, user.id)
             if result.status != "denied":
                 return
+            audit = await self.application_service.audit_denied_whitelist(
+                result.application
+            )
+            present = [
+                name for name, outcome in audit.items() if outcome.status == "present"
+            ]
+            details = [f"**Reviewed by:** {user.mention}", "**Whitelist results:**"]
+            details.extend(
+                f"{name}: {outcome.message}" for name, outcome in audit.items()
+            )
             await reaction.message.edit(
-                embed=self._application_embed(result.application, "Denied", f"Reviewed by {user.mention}")
+                embed=self._application_embed(
+                    result.application, "Denied", "\n".join(details)
+                )
             )
             await self._remove_voting_reactions(reaction.message)
+            if present:
+                reviewer_role = discord.utils.get(
+                    reaction.message.guild.roles,
+                    id=int(DATA.get("applicationReviewerRoleID", 0)),
+                )
+                await reaction.message.channel.send(
+                    content=reviewer_role.mention if reviewer_role else None,
+                    embed=discord.Embed(
+                        title="Denied applicant is still whitelisted",
+                        description=(
+                            f"**Minecraft IGN:** {result.application.minecraft_name}\n"
+                            f"**Servers:** {', '.join(present)}\n"
+                            f"**Application:** #{result.application.id}"
+                        ),
+                        color=0xE74C3C,
+                    ),
+                    allowed_mentions=discord.AllowedMentions(
+                        everyone=False,
+                        users=False,
+                        roles=[reviewer_role] if reviewer_role else False,
+                    ),
+                )
             if applicant:
                 await applicant.send(f"Your application was denied by {user.name}.")
             return
@@ -390,7 +424,8 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                 embed=self._application_embed(
                     result.application,
                     "Approved",
-                    f"Reviewed by {user.mention}\n{self._server_summary(result)}",
+                    f"**Reviewed by:** {user.mention}\n"
+                    f"**Whitelist results:**\n{self._server_summary(result)}",
                 )
             )
             await self._remove_voting_reactions(reaction.message)
