@@ -17,6 +17,7 @@ from eggbot_db.database import Database
 from eggbot_db.repositories import ServerRepository
 from eggbot_db.secrets import SecretBox
 from fry_api import FryApiClient
+from fry_health import FryHealthService
 from command_errors import reaction_for_command_error
 from player_tracking import PlayerTrackingService
 from tracking_cog import TrackingCog
@@ -31,6 +32,8 @@ class eggBot(commands.Bot):
         super().__init__(*args, **kwargs)
         self.database_connection = None
         self.fry_api = None
+        self.fry_health = None
+        self._fry_poll_errors = {}
         self._recurring_task = None
 
     async def setup_hook(self):
@@ -55,6 +58,7 @@ class eggBot(commands.Bot):
             self.database_connection, servers, self.fry_api
         )
         tracking = PlayerTrackingService(self.database_connection)
+        self.fry_health = FryHealthService(self.database_connection)
         self.tracking_service = tracking
         await self.add_cog(CommandsCog(self))
         await self.add_cog(AdminCommandsCog(self, applications, tracking))
@@ -95,7 +99,8 @@ class eggBot(commands.Bot):
         await super().close()
 
     async def get_token_by_auth(self, host, user, password):
-        async with aiohttp.ClientSession() as session:
+        timeout = aiohttp.ClientTimeout(total=15)
+        async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.post(f'{host}/v1/token/',data={"id": user, "password": password}) as resp:
                 if resp.status >= 400:
                     logger.debug(await resp.text())
@@ -103,58 +108,79 @@ class eggBot(commands.Bot):
                 return await resp.json()
 
     async def get_token(self,name, force=False):
-        if DATA["server_list"].get(name) is None:
+        server = DATA["server_list"].get(name)
+        if server is None:
             return None
 
-        if force is True or DATA["server_list"][name].get('token') is None:
-            result = await self.get_token_by_auth(DATA["sever_list"][name]["host"], DATA["server_list"][name]["id"], DATA["server_list"][name]["password"])
+        if force is True or server.get('token') is None:
+            result = await self.get_token_by_auth(
+                server["endpoint"], server["id"], server["password"]
+            )
             if not result:
                 return None
 
-            DATA["server_list"][name]["token"] = result["data"]["token"]
+            server["token"] = result["data"]["token"]
             save_data()
-            logger.debug(DATA["server_list"][name]["token"])
-        return DATA["server_list"][name]["token"]
+        return server["token"]
 
 
     #get fry meta data
     async def get_fry_meta(self,name,serverObj):
         logger.debug(f"geting meta for {name}")
-        token = await self.get_token(name)
-        headers = {}
-        if token is not None:
-            headers['Authorization'] = 'Bearer '+ token
+        self._fry_poll_errors.pop(name, None)
         try:
-            async with aiohttp.ClientSession() as session:
+            token = await self.get_token(name)
+            headers = {}
+            if token is not None:
+                headers['Authorization'] = 'Bearer '+ token
+            timeout = aiohttp.ClientTimeout(total=15)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
                 async with session.get(DATA["server_list"][name]["endpoint"]+'/v1/meta', headers=headers) as resp:
                     if resp.status >= 400:
-                        logger.debug(resp.status)
-                        logger.debug(await resp.text())
-                        logger.info('getting new token for '+name)
-                        headers = {'Authorization': 'Bearer ' + await self.get_token(name, False) }
-
-                        async with aiohttp.ClientSession() as session:
-                            async with session.get(DATA["server_list"][name]["endpoint"]+'/v1/meta', headers=headers) as resp:
-                                result =  await resp.json()
-                                logger.debug(f"1 {result['data']}")
-                                return result["data"]
-                    else:
-                        result =  await resp.json()
-                        logger.debug(result["data"])
-                        return result["data"]
-        except:
+                        if resp.status in (401, 403):
+                            refreshed = await self.get_token(name, True)
+                            if refreshed:
+                                headers = {'Authorization': 'Bearer ' + refreshed}
+                                async with session.get(
+                                    DATA["server_list"][name]["endpoint"]+'/v1/meta',
+                                    headers=headers,
+                                ) as retry:
+                                    if retry.status < 400:
+                                        result = await retry.json()
+                                        logger.debug(result["data"])
+                                        return result["data"]
+                                    status = retry.status
+                            else:
+                                status = resp.status
+                        else:
+                            status = resp.status
+                        self._fry_poll_errors[name] = f"HTTP {status}"
+                        logger.warning("Fry metadata request for {} returned HTTP {}", name, status)
+                        return False
+                    result = await resp.json()
+                    logger.debug(result["data"])
+                    return result["data"]
+        except Exception as error:
+            error_name = type(error).__name__
+            detail = str(error).strip()
+            self._fry_poll_errors[name] = (
+                f"{error_name}: {detail[:200]}" if detail else error_name
+            )
+            logger.warning("Fry metadata request for {} failed: {}", name, error_name)
             return False
     
     #gets current player online meta data from fry and store it to json for !ls command use.
     async def store_online_users(self):
-        methods = []
-        for name, server in DATA["server_list"].items():
-            methods.append(self.get_fry_meta(name, server))
+        server_names = list(DATA["server_list"])
+        methods = [
+            self.get_fry_meta(name, DATA["server_list"][name])
+            for name in server_names
+        ]
             
         data = await asyncio.gather(*methods)
-        data.sort(key=lambda s: "" if not s else s.get("name"))
-        
-        for info in data:
+        results = dict(zip(server_names, data))
+
+        for info in results.values():
             if info:
                 server = info["name"].strip().lower()
                 self.tracking_service.reconcile_api_snapshot(
@@ -182,6 +208,116 @@ class eggBot(commands.Bot):
                     
         logger.info("Storing online players...")
         save_data()
+        if self.fry_health is not None:
+            transition = self.fry_health.record_cycle(
+                {
+                    name: (
+                        None
+                        if info
+                        else self._fry_poll_errors.get(name, "Unknown Fry response")
+                    )
+                    for name, info in results.items()
+                }
+            )
+            await self.publish_fry_health_transition(transition)
+
+    async def publish_fry_health_transition(self, transition):
+        if transition.action == "none":
+            return
+        await self.wait_until_ready()
+        channel_id = transition.alert_channel_id or int(DATA["adminChannelID"])
+        channel = self.get_channel(channel_id)
+        if channel is None:
+            logger.error("Unable to find admin channel {} for Fry health alert", channel_id)
+            return
+
+        if transition.action == "recovery":
+            duration_seconds = max(
+                0,
+                int((transition.recovered_at - transition.started_at).total_seconds()),
+            )
+            duration_minutes = max(1, round(duration_seconds / 60))
+            embed = discord.Embed(
+                title="🟢 Fry connectivity restored",
+                description="All monitored Fry APIs are reachable again.",
+                color=0x2ECC71,
+            )
+            embed.add_field(
+                name="Recovered",
+                value=(
+                    f"<t:{int(transition.recovered_at.timestamp())}:F> "
+                    f"(<t:{int(transition.recovered_at.timestamp())}:R>)"
+                ),
+                inline=False,
+            )
+            embed.add_field(
+                name="Outage duration",
+                value=f"Approximately {duration_minutes} minutes",
+                inline=False,
+            )
+            embed.set_footer(
+                text="Times are displayed in your Discord local timezone."
+            )
+            await channel.send(embed=embed)
+            self.fry_health.mark_recovery_sent(transition.incident_id)
+            return
+
+        title = (
+            "🔴 Possible WireGuard connection outage"
+            if transition.all_servers_unreachable
+            else "🔴 Fry API connectivity problem"
+        )
+        affected = ", ".join(transition.affected_servers)
+        embed = discord.Embed(
+            title=title,
+            description=f"EggBot cannot reach Fry on: **{affected}**.",
+            color=0xE74C3C,
+        )
+        embed.add_field(
+            name="First failure",
+            value=(
+                f"<t:{int(transition.started_at.timestamp())}:F> "
+                f"(<t:{int(transition.started_at.timestamp())}:R>)"
+            ),
+            inline=False,
+        )
+        embed.add_field(
+            name="Failed polls",
+            value="At least 2 consecutive polls",
+            inline=False,
+        )
+        embed.add_field(
+            name="Last error",
+            value=transition.last_error or "Unknown connection error",
+            inline=False,
+        )
+        embed.set_footer(
+            text=(
+                "EggBot will retry every five minutes. Times are displayed in your "
+                "Discord local timezone."
+            )
+        )
+
+        message = None
+        if transition.action == "update" and transition.alert_message_id:
+            try:
+                message = await channel.fetch_message(transition.alert_message_id)
+                await message.edit(embed=embed)
+            except discord.HTTPException:
+                logger.exception("Unable to update Fry connectivity alert")
+        if message is None:
+            role_id = DATA.get("applicationReviewerRoleID")
+            mention = f"<@&{int(role_id)}>" if role_id else None
+            message = await channel.send(
+                content=mention,
+                embed=embed,
+                allowed_mentions=discord.AllowedMentions(roles=True),
+            )
+            self.fry_health.mark_alert_sent(
+                transition.incident_id,
+                channel_id=channel.id,
+                message_id=message.id,
+            )
 
     #gets started in class __init__
     async def recuring_task(self):
