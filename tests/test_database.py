@@ -6,7 +6,11 @@ from pathlib import Path
 from cryptography.fernet import Fernet
 
 from eggbot_db.database import Database
-from eggbot_db.repositories import ServerRepository, SettingsRepository
+from eggbot_db.repositories import (
+    ServerCapabilities,
+    ServerRepository,
+    SettingsRepository,
+)
 from eggbot_db.secrets import SecretBox
 
 
@@ -162,6 +166,37 @@ class DatabaseTests(unittest.TestCase):
                     """
                 )
 
+    def test_server_repository_round_trips_capabilities_and_refreshed_token(self):
+        self.database.migrate()
+        secret_box = SecretBox(Fernet.generate_key())
+        with self.database.connect() as connection:
+            servers = ServerRepository(connection, secret_box)
+            server_id = servers.upsert(
+                name="BACON",
+                endpoint="https://bacon.example",
+                api_user="user",
+                api_password="password",
+                api_token="old-token",
+            )
+            servers.set_capabilities(
+                server_id,
+                ServerCapabilities(
+                    authentication="authenticated",
+                    metadata_read="supported",
+                    whitelist_read="supported",
+                    whitelist_write="permission_denied",
+                ),
+                "2026-08-02T00:00:00+00:00",
+            )
+            servers.update_token(server_id, "new-token")
+            connection.commit()
+            stored = servers.get_by_name("bacon")
+            enabled = servers.list_enabled()
+
+        self.assertEqual(stored.api_token, "new-token")
+        self.assertEqual(stored.capabilities.metadata_read, "supported")
+        self.assertEqual(stored.capabilities.whitelist_write, "permission_denied")
+        self.assertEqual([item.name for item in enabled], ["BACON"])
 
 if __name__ == "__main__":
     unittest.main()
