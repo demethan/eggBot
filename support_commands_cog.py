@@ -6,7 +6,11 @@ import discord
 from discord.ext import commands
 from loguru import logger
 
-from application_service import ApplicationAnswers, ApplicationService, DecisionResult
+from application_service import (
+    ApplicationAnswers,
+    ApplicationService,
+    DecisionResult,
+)
 from config import DATA
 from minecraft_api import validate_minecraft_username
 
@@ -61,6 +65,36 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                 return answer == "yes"
             await ctx.author.send('Please answer with "yes" or "no".')
 
+    async def _sponsor_type_reaction(self, ctx, sponsor_identifier):
+        message = await ctx.author.send(
+            f"How should `{sponsor_identifier}` be identified?\n"
+            "💬 Discord name\n"
+            "🎮 Minecraft IGN\n"
+            "❌ Cancel application"
+        )
+        choices = {"💬": "discord", "🎮": "minecraft", "❌": None}
+        for emoji in choices:
+            await message.add_reaction(emoji)
+
+        def check(reaction, user):
+            return (
+                user == ctx.author
+                and reaction.message.id == message.id
+                and str(reaction.emoji) in choices
+            )
+
+        try:
+            reaction, _ = await self.client.wait_for(
+                "reaction_add", check=check, timeout=APPLICATION_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            await ctx.author.send("Your application timed out. Run `!apply` to start again.")
+            return None
+        sponsor_type = choices[str(reaction.emoji)]
+        if sponsor_type is None:
+            await ctx.author.send("Application cancelled. Nothing was submitted.")
+        return sponsor_type
+
     @commands.command(
         brief="Apply for server membership",
         description=(
@@ -114,25 +148,18 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             if has_sponsor is None:
                 return
             if has_sponsor:
-                while True:
-                    sponsor_kind = await self._answer(
-                        ctx,
-                        "Will you identify your sponsor by Discord name or Minecraft IGN? "
-                        "(discord/minecraft)",
-                    )
-                    if sponsor_kind is None:
-                        return
-                    sponsor_type = sponsor_kind.content.strip().casefold()
-                    if sponsor_type in ("discord", "minecraft"):
-                        break
-                    await ctx.author.send('Please answer with "discord" or "minecraft".')
                 sponsor = await self._answer(
                     ctx,
-                    "Provide your sponsor's Discord name or Minecraft in-game name.",
+                    "What is your sponsor's Discord name or Minecraft IGN?",
                 )
                 if sponsor is None:
                     return
                 sponsor_identifier = sponsor.content.strip()[:100]
+                sponsor_type = await self._sponsor_type_reaction(
+                    ctx, sponsor_identifier
+                )
+                if sponsor_type is None:
+                    return
 
         while True:
             source_message = await self._answer(ctx, "Where did you find us?")

@@ -9,6 +9,9 @@ only one open application. Applicants provide their Minecraft IGN, whether they 
 18 or older, where they found the community, and—when applicable—a sponsor identified
 by either Discord name or Minecraft IGN.
 
+Sponsor entry asks for the name first, then presents DM reactions: 💬 for a Discord
+name, 🎮 for a Minecraft IGN, or ❌ to cancel the application.
+
 The initial admin-channel post mentions the role configured by
 `applicationReviewerRoleID`. Allowed mentions are restricted to that one role; status
 edits and retries do not send additional notifications.
