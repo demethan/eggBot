@@ -92,10 +92,6 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             return
         statistics = self.tracking_service.server_statistics(server_name)
         embed = discord.Embed(title="Server statistics", color=color)
-        embed.description = (
-            "Initial pack dates are when EggBot first observed each pack, not necessarily "
-            "when it was originally installed."
-        )
         if not statistics:
             embed.description = f"No enabled server found for `{server_name}`."
         for item in statistics[:25]:
@@ -144,12 +140,6 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             return
         statistics = self.tracking_service.pack_statistics(server_name)
         embed = discord.Embed(title="Pack statistics", color=color)
-        if any(item.baseline for item in statistics):
-            embed.description = (
-                "⚠️ The first pack recorded on each server may have been installed before "
-                "EggBot began tracking. Its date and duration mean **first observed** and "
-                "**tracked duration**."
-            )
         if not statistics:
             embed.description = (
                 f"No tracked pack installations for `{server_name}`."
@@ -182,7 +172,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 text=f"Showing 25 of {len(statistics)} installations. Filter by server."
             )
         else:
-            embed.set_footer(text="Statistics begin with the first recorded Fry poll.")
+            embed.set_footer(text="Statistics begin when EggBot starts tracking Fry metadata.")
         await ctx.send(embed=embed)
 
     @commands.command(
