@@ -18,9 +18,59 @@ def admin_only():
     return commands.check(predicate)
 
 class AdminCommandsCog(commands.Cog, name='AdminCommands'):
-    def __init__(self, client, application_service=None):
+    def __init__(self, client, application_service=None, tracking_service=None):
         self.client = client
         self.application_service = application_service
+        self.tracking_service = tracking_service
+
+    @commands.command(
+        brief='Show Minecraft play hours for the current week',
+        description=(
+            'Admin: Show current-week hours for all players or one IGN. '
+            'Usage: !hours [Minecraft IGN]. Week starts Monday in America/Montreal.'
+        ),
+    )
+    @admin_only()
+    @commands.has_guild_permissions(manage_roles=True)
+    async def hours(self, ctx, *, minecraft_name=None):
+        """Admin: Show current-week Minecraft play hours.
+
+        Usage: !hours or !hours <Minecraft IGN>
+        Requires Manage Roles permission and must be used in the admin channel.
+        """
+        if self.tracking_service is None:
+            await ctx.send("Player-hour tracking is unavailable.")
+            return
+        week_start, week_end, players = self.tracking_service.weekly_hours(
+            minecraft_name
+        )
+        title = f"Player hours — week of {week_start:%Y-%m-%d}"
+        embed = discord.Embed(title=title, color=color)
+        if not players:
+            embed.description = (
+                f"No tracked sessions for `{minecraft_name}` this week."
+                if minecraft_name
+                else "No tracked sessions this week."
+            )
+        for player in players[:25]:
+            servers = ", ".join(
+                f"{name}: {hours:.1f} h"
+                for name, hours in player.server_hours.items()
+            )
+            open_note = (
+                f"\nOpen sessions: {player.open_sessions}"
+                if player.open_sessions
+                else ""
+            )
+            embed.add_field(
+                name=f"{player.player_name}: {player.total_hours:.1f} h",
+                value=(servers or "No server breakdown") + open_note,
+                inline=False,
+            )
+        embed.set_footer(
+            text=f"{week_start:%Y-%m-%d %H:%M %Z} to {week_end:%Y-%m-%d %H:%M %Z}"
+        )
+        await ctx.send(embed=embed)
 
     @commands.command(
         brief='Match an approved Discord user and Minecraft IGN',

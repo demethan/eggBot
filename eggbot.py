@@ -18,6 +18,8 @@ from eggbot_db.repositories import ServerRepository
 from eggbot_db.secrets import SecretBox
 from fry_api import FryApiClient
 from command_errors import reaction_for_command_error
+from player_tracking import PlayerTrackingService
+from tracking_cog import TrackingCog
 from discord.ext import commands
 from config import CONFIG, DATA
 from config import DATA, save_data
@@ -52,9 +54,11 @@ class eggBot(commands.Bot):
         applications = ApplicationService(
             self.database_connection, servers, self.fry_api
         )
+        tracking = PlayerTrackingService(self.database_connection)
         await self.add_cog(CommandsCog(self))
-        await self.add_cog(AdminCommandsCog(self, applications))
+        await self.add_cog(AdminCommandsCog(self, applications, tracking))
         await self.add_cog(SupportCommandsCog(self, applications))
+        await self.add_cog(TrackingCog(self, tracking))
         self._recurring_task = asyncio.create_task(self.recuring_task())
         
     # support channel welcome concierge
