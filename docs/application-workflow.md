@@ -12,6 +12,9 @@ by either Discord name or Minecraft IGN.
 Sponsor entry asks for the name first, then presents DM reactions: 💬 for a Discord
 name, 🎮 for a Minecraft IGN, or ❌ to cancel the application.
 
+The discovery-source question also uses reactions and stores a consistent reporting
+label: 🔎 `Web search`, 📦 `Modpack search`, 🧑 `Sponsor / friend`, or ▶️ `YouTube`.
+
 The initial admin-channel post mentions the role configured by
 `applicationReviewerRoleID`. Allowed mentions are restricted to that one role; status
 edits and retries do not send additional notifications.

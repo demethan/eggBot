@@ -95,6 +95,44 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             await ctx.author.send("Application cancelled. Nothing was submitted.")
         return sponsor_type
 
+    async def _source_reaction(self, ctx):
+        message = await ctx.author.send(
+            "Where did you find us?\n"
+            "🔎 Web search\n"
+            "📦 Modpack search\n"
+            "🧑 Sponsor / friend\n"
+            "▶️ YouTube\n"
+            "❌ Cancel application"
+        )
+        choices = {
+            "🔎": "Web search",
+            "📦": "Modpack search",
+            "🧑": "Sponsor / friend",
+            "▶️": "YouTube",
+            "❌": None,
+        }
+        for emoji in choices:
+            await message.add_reaction(emoji)
+
+        def check(reaction, user):
+            return (
+                user == ctx.author
+                and reaction.message.id == message.id
+                and str(reaction.emoji) in choices
+            )
+
+        try:
+            reaction, _ = await self.client.wait_for(
+                "reaction_add", check=check, timeout=APPLICATION_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            await ctx.author.send("Your application timed out. Run `!apply` to start again.")
+            return None
+        source = choices[str(reaction.emoji)]
+        if source is None:
+            await ctx.author.send("Application cancelled. Nothing was submitted.")
+        return source
+
     @commands.command(
         brief="Apply for server membership",
         description=(
@@ -161,14 +199,9 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                 if sponsor_type is None:
                     return
 
-        while True:
-            source_message = await self._answer(ctx, "Where did you find us?")
-            if source_message is None:
-                return
-            source = source_message.content.strip()[:200]
-            if source:
-                break
-            await ctx.author.send("Please provide a source.")
+        source = await self._source_reaction(ctx)
+        if source is None:
+            return
 
         admin_channel = discord.utils.get(
             ctx.guild.text_channels, id=int(DATA["adminChannelID"])
