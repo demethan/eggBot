@@ -13,6 +13,7 @@ croniter = "*"
 loguru = "*"
 humanize = "*"
 pytz = "*"
+cryptography = "*"
 
 [requires]
 python_version = "3.12"
