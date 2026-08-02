@@ -18,8 +18,47 @@ def admin_only():
     return commands.check(predicate)
 
 class AdminCommandsCog(commands.Cog, name='AdminCommands'):
-    def __init__(self, client):
+    def __init__(self, client, application_service=None):
         self.client = client
+        self.application_service = application_service
+
+    @commands.command(
+        brief='Match an approved Discord user and Minecraft IGN',
+        description=(
+            'Admin: Find an approved player association. '
+            'Usage: !whois <Discord name, mention, user ID, server display name, or Minecraft IGN>.'
+        ),
+    )
+    @admin_only()
+    @commands.has_guild_permissions(manage_roles=True)
+    async def whois(self, ctx, *, query):
+        """Admin: Find an approved Discord account or Minecraft IGN.
+
+        Usage: !whois <Discord name, mention, user ID, display name, or Minecraft IGN>
+        Requires Manage Roles permission and must be used in the admin channel.
+        """
+        if self.application_service is None:
+            await ctx.send("Player identity lookup is unavailable.")
+            return
+        normalized = re.sub(r"[<@!>]", "", query.strip())
+        links = self.application_service.find_player_links(normalized)
+        if not links:
+            await ctx.send(f"No approved player association found for `{query}`.")
+            return
+        embed = discord.Embed(title="Player identity", color=color)
+        for link in links[:10]:
+            discord_name = link.discord_username
+            if link.discord_display_name != link.discord_username:
+                discord_name += f" (displayed as {link.discord_display_name})"
+            embed.add_field(
+                name=link.minecraft_name,
+                value=(
+                    f"Discord: {discord_name}\n"
+                    f"Account: <@{link.discord_user_id}> (`{link.discord_user_id}`)"
+                ),
+                inline=False,
+            )
+        await ctx.send(embed=embed)
     
     @commands.command(description='Update dictionary values for IDs.', rest_is_raw=True)
     @admin_only()

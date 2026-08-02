@@ -31,6 +31,18 @@ class Application:
     decision_note: Optional[str]
 
 
+@dataclass(frozen=True)
+class PlayerDiscordLink:
+    id: int
+    discord_user_id: int
+    discord_username: str
+    discord_display_name: str
+    minecraft_name: str
+    application_id: int
+    linked_at: str
+    updated_at: str
+
+
 class ApplicationRepository:
     def __init__(self, connection: sqlite3.Connection):
         self.connection = connection
@@ -202,3 +214,53 @@ class ApplicationRepository:
             """,
             (application_id, server_id, utc_now(), status, response_message),
         )
+
+    def record_player_link(
+        self,
+        application_id: int,
+        discord_username: str,
+        discord_display_name: str,
+    ) -> PlayerDiscordLink:
+        application = self.get(application_id)
+        if application is None or application.status != "approved":
+            raise ValueError("only approved applications can create player links")
+        now = utc_now()
+        self.connection.execute(
+            """
+            INSERT INTO player_discord_links(
+                discord_user_id, discord_username, discord_display_name,
+                minecraft_name, application_id, linked_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(discord_user_id, minecraft_name) DO UPDATE SET
+                discord_username = excluded.discord_username,
+                discord_display_name = excluded.discord_display_name,
+                application_id = excluded.application_id,
+                updated_at = excluded.updated_at
+            """,
+            (
+                application.discord_user_id,
+                discord_username,
+                discord_display_name,
+                application.minecraft_name,
+                application.id,
+                now,
+                now,
+            ),
+        )
+        return self.find_player_links(str(application.discord_user_id))[0]
+
+    def find_player_links(self, query: str) -> list[PlayerDiscordLink]:
+        normalized = query.strip()
+        discord_id = int(normalized) if normalized.isdecimal() else -1
+        rows = self.connection.execute(
+            """
+            SELECT * FROM player_discord_links
+            WHERE discord_user_id = ?
+               OR minecraft_name = ? COLLATE NOCASE
+               OR discord_username = ? COLLATE NOCASE
+               OR discord_display_name = ? COLLATE NOCASE
+            ORDER BY updated_at DESC
+            """,
+            (discord_id, normalized, normalized, normalized),
+        ).fetchall()
+        return [PlayerDiscordLink(**dict(row)) for row in rows]

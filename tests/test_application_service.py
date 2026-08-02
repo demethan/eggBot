@@ -80,6 +80,23 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
         stored = service.applications.whitelist_results(application.id)
         self.assertEqual(stored, {1: "succeeded", 2: "succeeded"})
 
+        link = service.record_player_link(
+            application.id, "discord_user", "Server Nickname"
+        )
+        self.assertEqual(link.minecraft_name, "Demethan")
+        self.assertEqual(service.find_player_links("Demethan"), [link])
+        self.assertEqual(service.find_player_links("discord_user"), [link])
+        self.assertEqual(service.find_player_links("Server Nickname"), [link])
+        self.assertEqual(service.find_player_links("123"), [link])
+
+    def test_denied_application_cannot_create_player_link(self):
+        service = self.service(FakeFryClient())
+        application = self.submit(service)
+        service.deny(application.admin_message_id, 999)
+
+        with self.assertRaises(ValueError):
+            service.record_player_link(application.id, "user", "nickname")
+
     async def test_partial_failure_retries_only_failed_server(self):
         fry = FakeFryClient(failures={"EGGS"})
         service = self.service(fry)

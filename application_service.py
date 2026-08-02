@@ -7,7 +7,7 @@ import sqlite3
 from dataclasses import dataclass
 from typing import Dict, Optional
 
-from eggbot_db.applications import Application, ApplicationRepository
+from eggbot_db.applications import Application, ApplicationRepository, PlayerDiscordLink
 from eggbot_db.repositories import Server, ServerRepository
 from fry_api import FryApiClient, FryErrorCode, FryResult
 
@@ -88,6 +88,21 @@ class ApplicationService:
         application = self.applications.finish(application_id, 0, "denied", note)
         self.connection.commit()
         return application
+
+    def record_player_link(
+        self,
+        application_id: int,
+        discord_username: str,
+        discord_display_name: str,
+    ) -> PlayerDiscordLink:
+        link = self.applications.record_player_link(
+            application_id, discord_username, discord_display_name
+        )
+        self.connection.commit()
+        return link
+
+    def find_player_links(self, query: str) -> list[PlayerDiscordLink]:
+        return self.applications.find_player_links(query)
 
     async def _whitelist_server(
         self,

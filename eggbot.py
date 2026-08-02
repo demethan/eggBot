@@ -52,7 +52,7 @@ class eggBot(commands.Bot):
             self.database_connection, servers, self.fry_api
         )
         await self.add_cog(CommandsCog(self))
-        await self.add_cog(AdminCommandsCog(self))
+        await self.add_cog(AdminCommandsCog(self, applications))
         await self.add_cog(SupportCommandsCog(self, applications))
         self._recurring_task = asyncio.create_task(self.recuring_task())
         
@@ -225,4 +225,3 @@ intents.message_content = True
 intents.members = True
 bot = eggBot(command_prefix='!',intents=intents)
 bot.run(CONFIG["token"])
-

@@ -61,8 +61,19 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                 return answer == "yes"
             await ctx.author.send('Please answer with "yes" or "no".')
 
-    @commands.command(description="Apply to be a member.", rest_is_raw=True)
+    @commands.command(
+        brief="Apply for server membership",
+        description=(
+            "Apply for membership through a private DM interview. "
+            "Usage: !apply in the support channel. You can type cancel at any question."
+        ),
+        rest_is_raw=True,
+    )
     async def apply(self, ctx):
+        """Apply for membership through a private DM interview.
+
+        Usage: !apply in the support channel. Type cancel to stop without submitting.
+        """
         if ctx.channel.id != int(DATA["supportChannelID"]):
             return
         if self.application_service is None:
@@ -211,6 +222,14 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             f"{name}: {outcome.message}" for name, outcome in result.servers.items()
         )
 
+    @staticmethod
+    async def _remove_voting_reactions(message):
+        for emoji in ("👍", "👎"):
+            try:
+                await message.clear_reaction(emoji)
+            except discord.HTTPException:
+                logger.exception("Unable to remove application voting reaction")
+
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
         if user.bot or reaction.message.channel.id != int(DATA["adminChannelID"]):
@@ -236,6 +255,7 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             await reaction.message.edit(
                 embed=self._application_embed(result.application, "Denied", f"Reviewed by {user.mention}")
             )
+            await self._remove_voting_reactions(reaction.message)
             if applicant:
                 await applicant.send(f"Your application was denied by {user.name}.")
             return
@@ -260,6 +280,23 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                     )
                 )
                 return
+            try:
+                self.application_service.record_player_link(
+                    result.application.id,
+                    applicant.name,
+                    applicant.display_name,
+                )
+            except Exception:
+                logger.exception("Member role assigned but player association failed")
+                application = self.application_service.mark_role_failure(
+                    result.application.id, "Discord-to-Minecraft association failed"
+                )
+                await reaction.message.edit(
+                    embed=self._application_embed(
+                        application, "Needs retry", self._server_summary(result)
+                    )
+                )
+                return
             await reaction.message.edit(
                 embed=self._application_embed(
                     result.application,
@@ -267,6 +304,7 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                     f"Reviewed by {user.mention}\n{self._server_summary(result)}",
                 )
             )
+            await self._remove_voting_reactions(reaction.message)
             await applicant.send(f"Your application was approved by {user.name}.")
         elif result.status == "partial_failure":
             await reaction.message.edit(

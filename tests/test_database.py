@@ -27,7 +27,7 @@ class DatabaseTests(unittest.TestCase):
         first = self.database.migrate()
         second = self.database.migrate()
 
-        self.assertEqual([migration.version for migration in first], [1, 2, 3])
+        self.assertEqual([migration.version for migration in first], [1, 2, 3, 4])
         self.assertEqual(second, [])
         with self.database.connect() as connection:
             applied = connection.execute(
@@ -39,6 +39,7 @@ class DatabaseTests(unittest.TestCase):
                     (1, "initial_schema"),
                     (2, "legacy_import"),
                     (3, "application_workflow"),
+                    (4, "player_discord_links"),
                 ],
             )
 

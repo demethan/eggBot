@@ -19,6 +19,12 @@ The original admin message is edited with the final or retry status and is never
 deleted. If role assignment fails after whitelisting, the application returns to a
 retryable state; completed FryingPan2 calls are not repeated.
 
+After the role is assigned, EggBot stores the stable Discord user ID, current Discord
+username and server display name alongside the Minecraft IGN. Admins with **Manage
+Roles** can query either side of the association in the admin channel with
+`!whois <Discord name, mention, ID, or Minecraft IGN>`. Approval and denial remove the
+thumb voting reactions from the retained application message.
+
 The `2021-update` API contract used by EggBot is:
 
 - `POST /v1/token/` for JWT authentication
