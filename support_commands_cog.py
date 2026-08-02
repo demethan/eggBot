@@ -169,9 +169,18 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             await ctx.author.send("Your application could not be saved. Please contact an admin.")
             return
 
+        reviewer_role = discord.utils.get(
+            ctx.guild.roles, id=int(DATA.get("applicationReviewerRoleID", 0))
+        )
         try:
             approval_message = await admin_channel.send(
-                embed=self._application_embed(application, "Pending review")
+                content=reviewer_role.mention if reviewer_role else None,
+                embed=self._application_embed(application, "Pending review"),
+                allowed_mentions=discord.AllowedMentions(
+                    everyone=False,
+                    users=False,
+                    roles=[reviewer_role] if reviewer_role else False,
+                ),
             )
         except discord.HTTPException:
             self.application_service.fail_submission(

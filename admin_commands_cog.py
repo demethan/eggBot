@@ -72,8 +72,13 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             DATA["memberRoleID"] = int(value)
         elif key.lower() == "frybotroleid":
             DATA["fryBotRoleID"] = int(value)
+        elif key.lower() == "applicationreviewerroleid":
+            DATA["applicationReviewerRoleID"] = int(value)
         else:
-            await ctx.send("Invalid key. Available keys: supportChannelID, adminChannelID, memberRoleID, fryBotRoleID")
+            await ctx.send(
+                "Invalid key. Available keys: supportChannelID, adminChannelID, "
+                "memberRoleID, fryBotRoleID, applicationReviewerRoleID"
+            )
             return
 
         save_data()

@@ -9,6 +9,10 @@ only one open application. Applicants provide their Minecraft IGN, whether they 
 18 or older, where they found the community, and—when applicable—a sponsor identified
 by either Discord name or Minecraft IGN.
 
+The initial admin-channel post mentions the role configured by
+`applicationReviewerRoleID`. Allowed mentions are restricted to that one role; status
+edits and retries do not send additional notifications.
+
 An administrator or member with the Discord **Manage Roles** permission reviews the
 application using the reactions on its admin-channel message. Approval checks and adds
 the IGN directly through each enabled FryingPan2 API. The member role is assigned only
