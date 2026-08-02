@@ -267,19 +267,6 @@ class ApplicationService:
         self.connection.commit()
         return outcomes
 
-    async def _remove_from_server(
-        self, server: Server, minecraft_name: str
-    ) -> ServerWhitelistOutcome:
-        existing = await self.fry.whitelist_contains(server, minecraft_name)
-        if existing.ok and not existing.value:
-            return ServerWhitelistOutcome("absent", "Not whitelisted")
-        if not existing.ok:
-            return self._failure_outcome(existing)
-        removed = await self.fry.whitelist_remove(server, minecraft_name)
-        if removed.ok:
-            return ServerWhitelistOutcome("removed", "Removed")
-        return self._failure_outcome(removed)
-
     async def remove_from_whitelists(
         self, minecraft_name: str, requested_by_discord_user_id: int
     ) -> Dict[str, ServerWhitelistOutcome]:
@@ -287,14 +274,59 @@ class ApplicationService:
         if not name:
             raise ValueError("Minecraft name is required")
         servers = self.servers.list_enabled()
-        completed = await asyncio.gather(
-            *(self._remove_from_server(server, name) for server in servers),
+        initial_checks = await asyncio.gather(
+            *(self.fry.whitelist_contains(server, name) for server in servers),
             return_exceptions=True,
         )
+        present_servers = [
+            server
+            for server, check in zip(servers, initial_checks)
+            if not isinstance(check, Exception) and check.ok and check.value
+        ]
+        primary = present_servers[0] if present_servers else None
+        removal = None
+        if primary is not None:
+            try:
+                removal = await self.fry.whitelist_remove(primary, name)
+            except Exception:
+                removal = FryResult.failure(FryErrorCode.INTERNAL_ERROR)
+
+        if primary is not None and removal.ok:
+            final_checks = await asyncio.gather(
+                *(self.fry.whitelist_contains(server, name) for server in servers),
+                return_exceptions=True,
+            )
+        else:
+            final_checks = initial_checks
+
         outcomes = {}
-        for server, outcome in zip(servers, completed):
-            if isinstance(outcome, Exception):
+        for server, check in zip(servers, final_checks):
+            if isinstance(check, Exception):
                 outcome = ServerWhitelistOutcome("failed", "internal_error")
+            elif not check.ok:
+                outcome = self._failure_outcome(check)
+            elif check.value:
+                if primary is not None and removal is not None and not removal.ok:
+                    failure = self._failure_outcome(removal)
+                    outcome = ServerWhitelistOutcome(
+                        failure.status,
+                        f"Removal through {primary.name} failed: {failure.message}",
+                    )
+                else:
+                    outcome = ServerWhitelistOutcome(
+                        "failed",
+                        f"Still whitelisted after removal through {primary.name}",
+                    )
+            elif primary is not None and server.id == primary.id and removal.ok:
+                outcome = ServerWhitelistOutcome(
+                    "removed", f"Removed through {primary.name} and verified absent"
+                )
+            elif primary is not None and removal.ok:
+                outcome = ServerWhitelistOutcome(
+                    "absent", f"Verified absent after removal through {primary.name}"
+                )
+            else:
+                outcome = ServerWhitelistOutcome("absent", "Not whitelisted")
             outcomes[server.name] = outcome
             self.whitelist_actions.record_remove(
                 requested_by_discord_user_id=requested_by_discord_user_id,

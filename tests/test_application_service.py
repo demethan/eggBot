@@ -41,6 +41,7 @@ class FakeFryClient:
         self.remove_calls.append((server.name, name))
         if server.name in self.failures:
             return FryResult.failure(FryErrorCode.CONNECTION_ERROR, retryable=True)
+        self.already.clear()
         return FryResult.success(f"{name} removed")
 
 
@@ -189,6 +190,7 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(outcomes["BACON"].status, "removed")
         self.assertEqual(outcomes["EGGS"].status, "absent")
         self.assertEqual(fry.remove_calls, [("BACON", "Demethan")])
+        self.assertEqual(len(fry.contains_calls), 4)
         rows = self.connection.execute(
             """
             SELECT requested_by_discord_user_id, minecraft_name, status
