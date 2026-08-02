@@ -167,6 +167,66 @@ class PlayerTrackingTests(unittest.TestCase):
         self.assertEqual(result.started_sessions, 0)
         self.assertEqual(sessions, 1)
 
+    def test_api_login_time_improves_initial_session_start(self):
+        result = self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={
+                "Demethan": {"login_time": "2026-08-02 11:57:30.123456"}
+            },
+            observed_at=datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc),
+        )
+
+        session = self.connection.execute(
+            "SELECT * FROM player_sessions"
+        ).fetchone()
+        self.assertEqual(result.started_sessions, 1)
+        self.assertEqual(session["started_at"], "2026-08-02T11:57:30+00:00")
+
+    def test_changed_api_login_time_splits_reconnect_between_polls(self):
+        self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={
+                "Demethan": {"login_time": "2026-08-02 11:55:00"}
+            },
+            observed_at=datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc),
+        )
+        result = self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={
+                "Demethan": {"login_time": "2026-08-02 12:03:00"}
+            },
+            observed_at=datetime(2026, 8, 2, 12, 5, tzinfo=timezone.utc),
+        )
+
+        sessions = self.connection.execute(
+            "SELECT * FROM player_sessions ORDER BY started_at"
+        ).fetchall()
+        self.assertEqual(result.closed_sessions, 1)
+        self.assertEqual(result.started_sessions, 1)
+        self.assertEqual(len(sessions), 2)
+        self.assertEqual(sessions[0]["ended_at"], "2026-08-02T12:03:00+00:00")
+        self.assertEqual(sessions[1]["started_at"], "2026-08-02T12:03:00+00:00")
+
+    def test_invalid_or_future_api_login_time_uses_observation_time(self):
+        for index, login_time in enumerate(("not-a-date", "2026-08-02 12:30:00")):
+            name = f"Player{index}"
+            self.tracking.reconcile_api_snapshot(
+                server_name="BACON",
+                players_online={name: {"login_time": login_time}},
+                observed_at=datetime(2026, 8, 2, 12, 0, tzinfo=timezone.utc),
+            )
+
+        starts = [
+            row[0]
+            for row in self.connection.execute(
+                "SELECT started_at FROM player_sessions ORDER BY started_at"
+            )
+        ]
+        self.assertEqual(starts, [
+            "2026-08-02T12:00:00+00:00",
+            "2026-08-02T12:00:00+00:00",
+        ])
+
 
 if __name__ == "__main__":
     unittest.main()

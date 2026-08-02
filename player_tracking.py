@@ -264,8 +264,14 @@ class PlayerTrackingService:
             return ReconciliationResult(0, 0, 0)
         if isinstance(players_online, dict):
             names = {str(name).strip() for name in players_online if str(name).strip()}
+            login_times = {
+                str(name).strip().casefold(): self._api_login_time(details)
+                for name, details in players_online.items()
+                if str(name).strip()
+            }
         else:
             names = {str(name).strip() for name in (players_online or []) if str(name).strip()}
+            login_times = {}
         normalized_names = {name.casefold() for name in names}
         timestamp = (observed_at or datetime.now(timezone.utc)).astimezone(
             timezone.utc
@@ -306,6 +312,9 @@ class PlayerTrackingService:
                 ),
             )
             for name in names:
+                login_at = login_times.get(name.casefold())
+                if login_at is not None and login_at > timestamp:
+                    login_at = None
                 player = self.connection.execute(
                     "SELECT id FROM players WHERE current_name = ? COLLATE NOCASE",
                     (name,),
@@ -332,13 +341,45 @@ class PlayerTrackingService:
                         "UPDATE players SET last_seen_at = ? WHERE id = ?",
                         (timestamp, player_id),
                     )
+
+                open_session = self.connection.execute(
+                    """
+                    SELECT id, started_at, start_source
+                    FROM player_sessions
+                    WHERE player_id = ? AND server_id = ? AND ended_at IS NULL
+                    """,
+                    (player_id, server["id"]),
+                ).fetchone()
+                if open_session is not None and login_at is not None:
+                    if login_at > open_session["started_at"]:
+                        self.connection.execute(
+                            """
+                            UPDATE player_sessions
+                            SET ended_at = ?, end_source = 'api',
+                                confidence = 'api_derived'
+                            WHERE id = ?
+                            """,
+                            (login_at, open_session["id"]),
+                        )
+                        closed += 1
+                        open_session = None
+                    elif (
+                        login_at < open_session["started_at"]
+                        and open_session["start_source"] == "api"
+                    ):
+                        self.connection.execute(
+                            "UPDATE player_sessions SET started_at = ? WHERE id = ?",
+                            (login_at, open_session["id"]),
+                        )
+
+                started_at = login_at or timestamp
                 cursor = self.connection.execute(
                     """
                     INSERT OR IGNORE INTO player_sessions(
                         player_id, server_id, started_at, start_source, confidence
                     ) VALUES (?, ?, ?, 'api', 'api_derived')
                     """,
-                    (player_id, server["id"], timestamp),
+                    (player_id, server["id"], started_at),
                 )
                 started += cursor.rowcount
 
@@ -373,3 +414,18 @@ class PlayerTrackingService:
             self.connection.rollback()
             raise
         return ReconciliationResult(started, closed, len(names))
+
+    @staticmethod
+    def _api_login_time(details) -> Optional[str]:
+        if not isinstance(details, dict):
+            return None
+        value = details.get("login_time")
+        if not isinstance(value, str) or not value.strip():
+            return None
+        try:
+            parsed = datetime.fromisoformat(value.strip())
+        except ValueError:
+            return None
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc).isoformat(timespec="seconds")
