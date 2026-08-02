@@ -56,14 +56,34 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
         return message
 
     async def _yes_no(self, ctx, prompt):
-        while True:
-            message = await self._answer(ctx, prompt)
-            if message is None:
-                return None
-            answer = message.content.strip().casefold()
-            if answer in ("yes", "no"):
-                return answer == "yes"
-            await ctx.author.send('Please answer with "yes" or "no".')
+        message = await ctx.author.send(
+            f"{prompt}\n"
+            "✅ Yes\n"
+            "❌ No\n"
+            "🛑 Cancel application"
+        )
+        choices = {"✅": True, "❌": False, "🛑": None}
+        for emoji in choices:
+            await message.add_reaction(emoji)
+
+        def check(reaction, user):
+            return (
+                user == ctx.author
+                and reaction.message.id == message.id
+                and str(reaction.emoji) in choices
+            )
+
+        try:
+            reaction, _ = await self.client.wait_for(
+                "reaction_add", check=check, timeout=APPLICATION_TIMEOUT
+            )
+        except asyncio.TimeoutError:
+            await ctx.author.send("Your application timed out. Run `!apply` to start again.")
+            return None
+        answer = choices[str(reaction.emoji)]
+        if answer is None:
+            await ctx.author.send("Application cancelled. Nothing was submitted.")
+        return answer
 
     async def _sponsor_type_reaction(self, ctx, sponsor_identifier):
         message = await ctx.author.send(
@@ -175,14 +195,14 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             else:
                 await ctx.author.send("That is not a valid Minecraft name.")
 
-        over_18 = await self._yes_no(ctx, "Are you 18 or older? (yes/no)")
+        over_18 = await self._yes_no(ctx, "Are you 18 or older?")
         if over_18 is None:
             return
 
         sponsor_type = None
         sponsor_identifier = None
         if not over_18:
-            has_sponsor = await self._yes_no(ctx, "Do you have a sponsor? (yes/no)")
+            has_sponsor = await self._yes_no(ctx, "Do you have a sponsor?")
             if has_sponsor is None:
                 return
             if has_sponsor:
