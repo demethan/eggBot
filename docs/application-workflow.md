@@ -63,6 +63,10 @@ then re-checks every server to verify the shared whitelist propagated. Any serve
 still reports the IGN is clearly marked as failed; no duplicate removal is sent. Every
 result is stored as a per-server audit record. 🔴 cancels without making changes.
 
+`!whitelist <Minecraft IGN>` mirrors that safety model for additions: ➕ confirms,
+one server receives the add request, every enabled server is re-checked for shared-list
+propagation, and all results are audited. 🔴 cancels without making changes.
+
 After the role is assigned, EggBot stores the stable Discord user ID, current Discord
 username and server display name alongside the Minecraft IGN. Admins with **Manage
 Roles** can query either side of the association in the admin channel with

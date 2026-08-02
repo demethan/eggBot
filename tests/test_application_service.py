@@ -14,11 +14,19 @@ from fry_api import FryErrorCode, FryResult
 
 
 class FakeFryClient:
-    def __init__(self, failures=None, already=None, pause=None, contains_failures=None):
+    def __init__(
+        self,
+        failures=None,
+        already=None,
+        pause=None,
+        contains_failures=None,
+        shared_updates=False,
+    ):
         self.failures = set(failures or ())
         self.already = set(already or ())
         self.pause = pause
         self.contains_failures = set(contains_failures or ())
+        self.shared_updates = shared_updates
         self.contains_calls = []
         self.add_calls = []
         self.remove_calls = []
@@ -35,6 +43,8 @@ class FakeFryClient:
             await self.pause.wait()
         if server.name in self.failures:
             return FryResult.failure(FryErrorCode.CONNECTION_ERROR, retryable=True)
+        if self.shared_updates:
+            self.already.update({"BACON", "EGGS"})
         return FryResult.success(f"{name} added")
 
     async def whitelist_remove(self, server, name):
@@ -200,6 +210,27 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             [tuple(row) for row in rows],
             [(999, "Demethan", "removed"), (999, "Demethan", "absent")],
+        )
+
+    async def test_admin_whitelist_addition_uses_one_server_and_verifies_all(self):
+        fry = FakeFryClient(shared_updates=True)
+        service = self.service(fry)
+
+        outcomes = await service.add_to_whitelists("Demethan", 999)
+
+        self.assertEqual(outcomes["BACON"].status, "added")
+        self.assertEqual(outcomes["EGGS"].status, "present")
+        self.assertEqual(fry.add_calls, [("BACON", "Demethan")])
+        self.assertEqual(len(fry.contains_calls), 4)
+        rows = self.connection.execute(
+            """
+            SELECT requested_by_discord_user_id, minecraft_name, status
+            FROM whitelist_admin_add_actions ORDER BY server_id
+            """
+        ).fetchall()
+        self.assertEqual(
+            [tuple(row) for row in rows],
+            [(999, "Demethan", "added"), (999, "Demethan", "present")],
         )
 
     def test_denial_followup_offer_is_durable_and_single_response(self):

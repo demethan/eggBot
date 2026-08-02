@@ -338,6 +338,77 @@ class ApplicationService:
         self.connection.commit()
         return outcomes
 
+    async def add_to_whitelists(
+        self, minecraft_name: str, requested_by_discord_user_id: int
+    ) -> Dict[str, ServerWhitelistOutcome]:
+        name = minecraft_name.strip()
+        if not name:
+            raise ValueError("Minecraft name is required")
+        servers = self.servers.list_enabled()
+        initial_checks = await asyncio.gather(
+            *(self.fry.whitelist_contains(server, name) for server in servers),
+            return_exceptions=True,
+        )
+        absent_servers = [
+            server
+            for server, check in zip(servers, initial_checks)
+            if not isinstance(check, Exception) and check.ok and not check.value
+        ]
+        primary = absent_servers[0] if absent_servers else None
+        addition = None
+        if primary is not None:
+            try:
+                addition = await self.fry.whitelist_add(primary, name)
+            except Exception:
+                addition = FryResult.failure(FryErrorCode.INTERNAL_ERROR)
+
+        if primary is not None and addition.ok:
+            final_checks = await asyncio.gather(
+                *(self.fry.whitelist_contains(server, name) for server in servers),
+                return_exceptions=True,
+            )
+        else:
+            final_checks = initial_checks
+
+        outcomes = {}
+        for server, check in zip(servers, final_checks):
+            if isinstance(check, Exception):
+                outcome = ServerWhitelistOutcome("failed", "internal_error")
+            elif not check.ok:
+                outcome = self._failure_outcome(check)
+            elif not check.value:
+                if primary is not None and addition is not None and not addition.ok:
+                    failure = self._failure_outcome(addition)
+                    outcome = ServerWhitelistOutcome(
+                        failure.status,
+                        f"Addition through {primary.name} failed: {failure.message}",
+                    )
+                else:
+                    outcome = ServerWhitelistOutcome(
+                        "failed",
+                        f"Still absent after addition through {primary.name}",
+                    )
+            elif primary is not None and server.id == primary.id and addition.ok:
+                outcome = ServerWhitelistOutcome(
+                    "added", f"Added through {primary.name} and verified present"
+                )
+            elif primary is not None and addition.ok:
+                outcome = ServerWhitelistOutcome(
+                    "present", f"Verified present after addition through {primary.name}"
+                )
+            else:
+                outcome = ServerWhitelistOutcome("present", "Already whitelisted")
+            outcomes[server.name] = outcome
+            self.whitelist_actions.record_add(
+                requested_by_discord_user_id=requested_by_discord_user_id,
+                minecraft_name=name,
+                server_id=server.id,
+                status=outcome.status,
+                response_message=outcome.message,
+            )
+        self.connection.commit()
+        return outcomes
+
     def deny(self, admin_message_id: int, reviewer_id: int) -> DecisionResult:
         application = self.applications.get_by_admin_message(admin_message_id)
         if application is None:

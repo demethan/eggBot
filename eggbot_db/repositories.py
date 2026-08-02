@@ -212,3 +212,29 @@ class WhitelistAdminActionRepository:
                 utc_now(),
             ),
         )
+
+    def record_add(
+        self,
+        *,
+        requested_by_discord_user_id: int,
+        minecraft_name: str,
+        server_id: int,
+        status: str,
+        response_message: Optional[str] = None,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO whitelist_admin_add_actions(
+                requested_by_discord_user_id, minecraft_name,
+                server_id, status, response_message, attempted_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                requested_by_discord_user_id,
+                minecraft_name,
+                server_id,
+                status,
+                response_message,
+                utc_now(),
+            ),
+        )
