@@ -51,7 +51,10 @@ class FakeFryClient:
         self.remove_calls.append((server.name, name))
         if server.name in self.failures:
             return FryResult.failure(FryErrorCode.CONNECTION_ERROR, retryable=True)
-        self.already.clear()
+        if self.shared_updates:
+            self.already.clear()
+        else:
+            self.already.discard(server.name)
         return FryResult.success(f"{name} removed")
 
 
@@ -73,7 +76,12 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.temporary.cleanup()
 
     def service(self, fry):
-        return ApplicationService(self.connection, self.servers, fry)
+        return ApplicationService(
+            self.connection,
+            self.servers,
+            fry,
+            whitelist_propagation_delays=(0, 0),
+        )
 
     def submit(self, service, user_id=123):
         application = service.submit(
@@ -211,6 +219,19 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
             [tuple(row) for row in rows],
             [(999, "Demethan", "removed"), (999, "Demethan", "absent")],
         )
+
+    async def test_admin_removal_targets_servers_where_shared_update_did_not_propagate(self):
+        fry = FakeFryClient(already={"BACON", "EGGS"})
+        service = self.service(fry)
+
+        outcomes = await service.remove_from_whitelists("Demethan", 999)
+
+        self.assertEqual(
+            fry.remove_calls,
+            [("BACON", "Demethan"), ("EGGS", "Demethan")],
+        )
+        self.assertEqual(outcomes["BACON"].status, "removed")
+        self.assertEqual(outcomes["EGGS"].status, "removed")
 
     async def test_admin_whitelist_addition_uses_one_server_and_verifies_all(self):
         fry = FakeFryClient(shared_updates=True)

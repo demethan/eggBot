@@ -59,9 +59,10 @@ clearing in private channels.
 Admins with **Manage Roles** can use `!unwhitelist <Minecraft IGN>` in the admin
 channel. The command requires a 🗑️ reaction confirmation, checks each enabled server
 before removal, sends one removal through the first server where the IGN is present,
-then re-checks every server to verify the shared whitelist propagated. Any server that
-still reports the IGN is clearly marked as failed; no duplicate removal is sent. Every
-result is stored as a per-server audit record. 🔴 cancels without making changes.
+then waits and re-checks every server to verify the shared whitelist propagated. If a
+server still reports the IGN after the bounded wait, that server receives one targeted
+removal and all servers are verified again. Every result is stored as a per-server
+audit record. 🔴 cancels without making changes.
 
 `!whitelist <Minecraft IGN>` mirrors that safety model for additions: ➕ confirms,
 one server receives the add request, every enabled server is re-checked for shared-list

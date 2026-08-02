@@ -51,11 +51,14 @@ class ApplicationService:
         connection: sqlite3.Connection,
         servers: ServerRepository,
         fry: FryApiClient,
+        *,
+        whitelist_propagation_delays: tuple[float, ...] = (1.0, 2.0, 4.0),
     ):
         self.connection = connection
         self.applications = ApplicationRepository(connection)
         self.servers = servers
         self.fry = fry
+        self.whitelist_propagation_delays = whitelist_propagation_delays
         self.whitelist_actions = WhitelistAdminActionRepository(connection)
 
     def submit(self, answers: ApplicationAnswers) -> Application:
@@ -285,17 +288,47 @@ class ApplicationService:
         ]
         primary = present_servers[0] if present_servers else None
         removal = None
+        removal_results = {}
         if primary is not None:
             try:
                 removal = await self.fry.whitelist_remove(primary, name)
             except Exception:
                 removal = FryResult.failure(FryErrorCode.INTERNAL_ERROR)
+            removal_results[primary.id] = removal
 
         if primary is not None and removal.ok:
-            final_checks = await asyncio.gather(
-                *(self.fry.whitelist_contains(server, name) for server in servers),
-                return_exceptions=True,
-            )
+            final_checks = initial_checks
+            for delay in self.whitelist_propagation_delays:
+                if delay:
+                    await asyncio.sleep(delay)
+                final_checks = await asyncio.gather(
+                    *(self.fry.whitelist_contains(server, name) for server in servers),
+                    return_exceptions=True,
+                )
+                if not any(
+                    not isinstance(check, Exception) and check.ok and check.value
+                    for check in final_checks
+                ):
+                    break
+
+            remaining = [
+                server
+                for server, check in zip(servers, final_checks)
+                if not isinstance(check, Exception) and check.ok and check.value
+            ]
+            if remaining:
+                targeted = await asyncio.gather(
+                    *(self.fry.whitelist_remove(server, name) for server in remaining),
+                    return_exceptions=True,
+                )
+                for server, result in zip(remaining, targeted):
+                    if isinstance(result, Exception):
+                        result = FryResult.failure(FryErrorCode.INTERNAL_ERROR)
+                    removal_results[server.id] = result
+                final_checks = await asyncio.gather(
+                    *(self.fry.whitelist_contains(server, name) for server in servers),
+                    return_exceptions=True,
+                )
         else:
             final_checks = initial_checks
 
@@ -306,20 +339,21 @@ class ApplicationService:
             elif not check.ok:
                 outcome = self._failure_outcome(check)
             elif check.value:
-                if primary is not None and removal is not None and not removal.ok:
-                    failure = self._failure_outcome(removal)
+                attempted = removal_results.get(server.id) or removal
+                if attempted is not None and not attempted.ok:
+                    failure = self._failure_outcome(attempted)
                     outcome = ServerWhitelistOutcome(
                         failure.status,
-                        f"Removal through {primary.name} failed: {failure.message}",
+                        f"Removal failed: {failure.message}",
                     )
                 else:
                     outcome = ServerWhitelistOutcome(
                         "failed",
-                        f"Still whitelisted after removal through {primary.name}",
+                        "Still whitelisted after shared and targeted removal",
                     )
-            elif primary is not None and server.id == primary.id and removal.ok:
+            elif server.id in removal_results and removal_results[server.id].ok:
                 outcome = ServerWhitelistOutcome(
-                    "removed", f"Removed through {primary.name} and verified absent"
+                    "removed", f"Removed through {server.name} and verified absent"
                 )
             elif primary is not None and removal.ok:
                 outcome = ServerWhitelistOutcome(
