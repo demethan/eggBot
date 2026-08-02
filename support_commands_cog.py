@@ -474,16 +474,28 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
         )
         if updated is None:
             return True
-        await reaction.message.clear_reactions()
+        await self._remove_own_prompt_reactions(reaction.message, ("📩", "🔴"))
         if not requested:
             await reaction.message.edit(
                 content="No admin follow-up requested."
             )
             return True
 
+        await self._notify_followup_admin(application)
+        self.application_service.mark_followup_notified(application.id)
         await reaction.message.edit(
             content="Your follow-up request was sent to the admins. An admin can contact you directly."
         )
+        return True
+
+    async def _remove_own_prompt_reactions(self, message, emojis):
+        for emoji in emojis:
+            try:
+                await message.remove_reaction(emoji, self.client.user)
+            except discord.HTTPException:
+                logger.exception("Unable to remove EggBot's DM prompt reaction")
+
+    async def _notify_followup_admin(self, application):
         admin_channel = self.client.get_channel(int(DATA["adminChannelID"]))
         if admin_channel is None:
             admin_channel = await self.client.fetch_channel(int(DATA["adminChannelID"]))
@@ -521,7 +533,32 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                 roles=[reviewer_role] if reviewer_role else False,
             ),
         )
-        return True
+
+    async def reconcile_followup_notifications(self):
+        """Deliver requested follow-ups that failed before the admin alert was sent."""
+        if self.application_service is None:
+            return
+        for followup in self.application_service.list_undelivered_followups():
+            application = self.application_service.get_application(
+                followup.application_id
+            )
+            if application is None:
+                continue
+            try:
+                await self._notify_followup_admin(application)
+                self.application_service.mark_followup_notified(application.id)
+                applicant = await self.client.fetch_user(application.discord_user_id)
+                dm_channel = applicant.dm_channel or await applicant.create_dm()
+                prompt = await dm_channel.fetch_message(followup.prompt_message_id)
+                await self._remove_own_prompt_reactions(prompt, ("📩", "🔴"))
+                await prompt.edit(
+                    content="Your follow-up request was sent to the admins. An admin can contact you directly."
+                )
+            except discord.HTTPException:
+                logger.exception(
+                    "Unable to deliver follow-up notification for application {}",
+                    application.id,
+                )
 
     async def reconcile_pending_reviews(self):
         """Process one clear admin decision that arrived while EggBot was offline."""

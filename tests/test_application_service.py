@@ -186,6 +186,9 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(requested.status, "requested")
         self.assertIsNotNone(requested.responded_at)
         self.assertIsNone(duplicate)
+        self.assertEqual(service.list_undelivered_followups(), [requested])
+        service.mark_followup_notified(application.id)
+        self.assertEqual(service.list_undelivered_followups(), [])
 
     def test_pending_list_excludes_completed_applications(self):
         service = self.service(FakeFryClient())

@@ -138,6 +138,13 @@ class ApplicationService:
         self.connection.commit()
         return followup
 
+    def list_undelivered_followups(self) -> list[ApplicationFollowup]:
+        return self.applications.list_undelivered_followups()
+
+    def mark_followup_notified(self, application_id: int) -> None:
+        self.applications.mark_followup_notified(application_id)
+        self.connection.commit()
+
     async def _whitelist_server(
         self,
         server: Server,

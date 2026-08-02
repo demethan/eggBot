@@ -50,6 +50,7 @@ class ApplicationFollowup:
     status: str
     offered_at: str
     responded_at: Optional[str]
+    notified_at: Optional[str]
 
 
 class ApplicationRepository:
@@ -308,6 +309,26 @@ class ApplicationRepository:
         if cursor.rowcount != 1:
             return None
         return self.get_followup_by_message(prompt_message_id)
+
+    def list_undelivered_followups(self) -> list[ApplicationFollowup]:
+        rows = self.connection.execute(
+            """
+            SELECT * FROM application_followup_requests
+            WHERE status = 'requested' AND notified_at IS NULL
+            ORDER BY responded_at
+            """
+        ).fetchall()
+        return [ApplicationFollowup(**dict(row)) for row in rows]
+
+    def mark_followup_notified(self, application_id: int) -> None:
+        self.connection.execute(
+            """
+            UPDATE application_followup_requests
+            SET notified_at = ?
+            WHERE application_id = ? AND status = 'requested'
+            """,
+            (utc_now(), application_id),
+        )
 
     def record_player_link(
         self,

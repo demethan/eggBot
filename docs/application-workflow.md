@@ -51,6 +51,11 @@ role and denying admin with the applicant's Discord account, IGN, and applicatio
 An admin can then choose to contact the applicant, subject to Discord's privacy
 settings.
 
+Follow-up delivery is durable: a request is marked notified only after the admin alert
+succeeds. Undelivered requests are retried after EggBot reconnects. In DMs, EggBot
+removes only its own prompt reactions because Discord does not allow bulk reaction
+clearing in private channels.
+
 After the role is assigned, EggBot stores the stable Discord user ID, current Discord
 username and server display name alongside the Minecraft IGN. Admins with **Manage
 Roles** can query either side of the association in the admin channel with

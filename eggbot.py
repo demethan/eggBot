@@ -76,6 +76,7 @@ class eggBot(commands.Bot):
         support_cog = self.get_cog("SupportCommands")
         if support_cog is not None:
             await support_cog.reconcile_pending_reviews()
+            await support_cog.reconcile_followup_notifications()
         logger.info('Logged on as {0}!'.format(self.user))
 
     async def close(self):
