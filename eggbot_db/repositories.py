@@ -8,6 +8,7 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 from .secrets import SecretBox
+from .database import utc_now
 
 
 @dataclass(frozen=True)
@@ -180,3 +181,34 @@ class SettingsRepository:
             "SELECT value_json FROM settings WHERE key = ?", (key,)
         ).fetchone()
         return default if row is None else json.loads(row["value_json"])
+
+
+class WhitelistAdminActionRepository:
+    def __init__(self, connection: sqlite3.Connection):
+        self.connection = connection
+
+    def record_remove(
+        self,
+        *,
+        requested_by_discord_user_id: int,
+        minecraft_name: str,
+        server_id: int,
+        status: str,
+        response_message: Optional[str] = None,
+    ) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO whitelist_admin_actions(
+                requested_by_discord_user_id, minecraft_name, action,
+                server_id, status, response_message, attempted_at
+            ) VALUES (?, ?, 'remove', ?, ?, ?, ?)
+            """,
+            (
+                requested_by_discord_user_id,
+                minecraft_name,
+                server_id,
+                status,
+                response_message,
+                utc_now(),
+            ),
+        )

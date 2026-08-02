@@ -21,6 +21,7 @@ class FakeFryClient:
         self.contains_failures = set(contains_failures or ())
         self.contains_calls = []
         self.add_calls = []
+        self.remove_calls = []
 
     async def whitelist_contains(self, server, name):
         self.contains_calls.append((server.name, name))
@@ -35,6 +36,12 @@ class FakeFryClient:
         if server.name in self.failures:
             return FryResult.failure(FryErrorCode.CONNECTION_ERROR, retryable=True)
         return FryResult.success(f"{name} added")
+
+    async def whitelist_remove(self, server, name):
+        self.remove_calls.append((server.name, name))
+        if server.name in self.failures:
+            return FryResult.failure(FryErrorCode.CONNECTION_ERROR, retryable=True)
+        return FryResult.success(f"{name} removed")
 
 
 class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
@@ -171,6 +178,26 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(
             service.applications.denial_whitelist_checks(application.id),
             {1: "present", 2: "failed"},
+        )
+
+    async def test_admin_whitelist_removal_is_checked_and_audited(self):
+        fry = FakeFryClient(already={"BACON"})
+        service = self.service(fry)
+
+        outcomes = await service.remove_from_whitelists("Demethan", 999)
+
+        self.assertEqual(outcomes["BACON"].status, "removed")
+        self.assertEqual(outcomes["EGGS"].status, "absent")
+        self.assertEqual(fry.remove_calls, [("BACON", "Demethan")])
+        rows = self.connection.execute(
+            """
+            SELECT requested_by_discord_user_id, minecraft_name, status
+            FROM whitelist_admin_actions ORDER BY server_id
+            """
+        ).fetchall()
+        self.assertEqual(
+            [tuple(row) for row in rows],
+            [(999, "Demethan", "removed"), (999, "Demethan", "absent")],
         )
 
     def test_denial_followup_offer_is_durable_and_single_response(self):

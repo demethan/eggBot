@@ -61,6 +61,79 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 inline=False,
             )
         await ctx.send(embed=embed)
+
+    @commands.command(
+        brief='Remove a Minecraft IGN from every enabled server',
+        description=(
+            'Admin: Remove an IGN through every enabled FryingPan whitelist API. '
+            'Usage: !unwhitelist <Minecraft IGN>. Requires reaction confirmation.'
+        ),
+    )
+    @admin_only()
+    @commands.has_guild_permissions(manage_roles=True)
+    async def unwhitelist(self, ctx, *, minecraft_name):
+        """Admin: Remove an IGN from all enabled server whitelists.
+
+        Usage: !unwhitelist <Minecraft IGN>
+        Requires Manage Roles permission and a 🗑️ confirmation in the admin channel.
+        """
+        if self.application_service is None:
+            await ctx.send("Whitelist administration is unavailable.")
+            return
+        minecraft_name = minecraft_name.strip()
+        if not minecraft_name:
+            await ctx.send("Provide a Minecraft IGN. Usage: `!unwhitelist <IGN>`")
+            return
+        confirmation = await ctx.send(
+            f"Remove **{minecraft_name}** from every enabled server?\n"
+            "🗑️ Confirm removal\n"
+            "🔴 Cancel"
+        )
+        await confirmation.add_reaction("🗑️")
+        await confirmation.add_reaction("🔴")
+
+        def check(reaction, user):
+            return (
+                user == ctx.author
+                and reaction.message.id == confirmation.id
+                and str(reaction.emoji) in ("🗑️", "🔴")
+            )
+
+        try:
+            reaction, _ = await self.client.wait_for(
+                "reaction_add", check=check, timeout=60
+            )
+        except asyncio.TimeoutError:
+            await confirmation.edit(content="Whitelist removal timed out. No changes made.")
+            return
+        if str(reaction.emoji) == "🔴":
+            await confirmation.edit(content="Whitelist removal cancelled. No changes made.")
+            return
+
+        await confirmation.edit(content=f"Removing **{minecraft_name}**…")
+        outcomes = await self.application_service.remove_from_whitelists(
+            minecraft_name, ctx.author.id
+        )
+        result_lines = [
+            f"**{server}:** {outcome.message}"
+            for server, outcome in outcomes.items()
+        ]
+        failures = [
+            outcome
+            for outcome in outcomes.values()
+            if outcome.status not in ("removed", "absent")
+        ]
+        embed = discord.Embed(
+            title=f"Whitelist removal: {minecraft_name}",
+            description="\n".join(result_lines) or "No enabled servers.",
+            color=0xE74C3C if failures else 0x2ECC71,
+        )
+        embed.set_footer(text=f"Requested by {ctx.author}")
+        await confirmation.edit(content=None, embed=embed)
+        try:
+            await confirmation.clear_reactions()
+        except discord.HTTPException:
+            logger.exception("Unable to clear whitelist removal confirmation reactions")
     
     @commands.command(description='Update dictionary values for IDs.', rest_is_raw=True)
     @admin_only()

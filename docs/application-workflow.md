@@ -56,6 +56,11 @@ succeeds. Undelivered requests are retried after EggBot reconnects. In DMs, EggB
 removes only its own prompt reactions because Discord does not allow bulk reaction
 clearing in private channels.
 
+Admins with **Manage Roles** can use `!unwhitelist <Minecraft IGN>` in the admin
+channel. The command requires a 🗑️ reaction confirmation, checks each enabled server
+before removal, calls only the FryingPan APIs where the IGN is present, labels every
+result, and stores a per-server audit record. 🔴 cancels without making changes.
+
 After the role is assigned, EggBot stores the stable Discord user ID, current Discord
 username and server display name alongside the Minecraft IGN. Admins with **Manage
 Roles** can query either side of the association in the admin channel with

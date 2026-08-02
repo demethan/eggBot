@@ -27,7 +27,7 @@ class DatabaseTests(unittest.TestCase):
         first = self.database.migrate()
         second = self.database.migrate()
 
-        self.assertEqual([migration.version for migration in first], [1, 2, 3, 4, 5, 6, 7])
+        self.assertEqual([migration.version for migration in first], [1, 2, 3, 4, 5, 6, 7, 8])
         self.assertEqual(second, [])
         with self.database.connect() as connection:
             applied = connection.execute(
@@ -43,6 +43,7 @@ class DatabaseTests(unittest.TestCase):
                     (5, "denial_whitelist_audit"),
                     (6, "application_followups"),
                     (7, "followup_delivery"),
+                    (8, "whitelist_admin_actions"),
                 ],
             )
 
