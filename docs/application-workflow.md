@@ -43,6 +43,9 @@ Roles** can query either side of the association in the admin channel with
 `!whois <Discord name, mention, ID, or Minecraft IGN>`. Approval and denial remove the
 thumb voting reactions from the retained application message.
 
+Each result labels the Minecraft IGN, Discord username, server display name, account
+mention, stable Discord user ID, source application ID, and linked timestamp.
+
 The `2021-update` API contract used by EggBot is:
 
 - `POST /v1/token/` for JWT authentication

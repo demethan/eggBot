@@ -46,15 +46,17 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             await ctx.send(f"No approved player association found for `{query}`.")
             return
         embed = discord.Embed(title="Player identity", color=color)
-        for link in links[:10]:
-            discord_name = link.discord_username
-            if link.discord_display_name != link.discord_username:
-                discord_name += f" (displayed as {link.discord_display_name})"
+        for index, link in enumerate(links[:10], start=1):
             embed.add_field(
-                name=link.minecraft_name,
+                name=f"Association {index}",
                 value=(
-                    f"Discord: {discord_name}\n"
-                    f"Account: <@{link.discord_user_id}> (`{link.discord_user_id}`)"
+                    f"**Minecraft IGN:** {link.minecraft_name}\n"
+                    f"**Discord username:** {link.discord_username}\n"
+                    f"**Server display name:** {link.discord_display_name}\n"
+                    f"**Discord account:** <@{link.discord_user_id}>\n"
+                    f"**Discord user ID:** `{link.discord_user_id}`\n"
+                    f"**Application ID:** `{link.application_id}`\n"
+                    f"**Linked:** {link.linked_at}"
                 ),
                 inline=False,
             )
