@@ -37,6 +37,9 @@ The original admin message is edited with the final or retry status and is never
 deleted. If role assignment fails after whitelisting, the application returns to a
 retryable state; completed FryingPan2 calls are not repeated.
 
+Final review details show the reviewer and decision together (`Approved` or `Denied`),
+followed by the per-server whitelist results.
+
 After denial, EggBot performs a read-only check of every enabled FryingPan whitelist
 and stores the per-server result. If the denied IGN is still present, the retained
 application message is annotated and the configured reviewer role receives an alert.

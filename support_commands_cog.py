@@ -347,7 +347,10 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             present = [
                 name for name, outcome in audit.items() if outcome.status == "present"
             ]
-            details = [f"**Reviewed by:** {user.mention}", "**Whitelist results:**"]
+            details = [
+                f"**Reviewed by:** {user.mention} — **Denied**",
+                "**Whitelist results:**",
+            ]
             details.extend(
                 f"{name}: {outcome.message}" for name, outcome in audit.items()
             )
@@ -424,7 +427,7 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                 embed=self._application_embed(
                     result.application,
                     "Approved",
-                    f"**Reviewed by:** {user.mention}\n"
+                    f"**Reviewed by:** {user.mention} — **Approved**\n"
                     f"**Whitelist results:**\n{self._server_summary(result)}",
                 )
             )
