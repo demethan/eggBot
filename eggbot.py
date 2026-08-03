@@ -14,7 +14,11 @@ from admin_commands_cog import AdminCommandsCog
 from support_commands_cog import SupportCommandsCog
 from application_service import ApplicationService
 from eggbot_db.database import Database
-from eggbot_db.repositories import ServerRepository
+from eggbot_db.repositories import (
+    RebootScheduleRepository,
+    ServerRepository,
+    SettingsRepository,
+)
 from eggbot_db.secrets import SecretBox
 from fry_api import FryApiClient
 from fry_health import FryHealthService
@@ -47,6 +51,31 @@ class eggBot(commands.Bot):
         )
         self.database_connection = database.connect()
         servers = ServerRepository(self.database_connection, secrets)
+        settings = SettingsRepository(self.database_connection)
+        schedules = RebootScheduleRepository(self.database_connection)
+
+        # Keep legacy readers operational while SQLite is the durable config source.
+        for key in (
+            "supportChannelID", "adminChannelID", "memberRoleID", "fryBotRoleID",
+            "applicationReviewerRoleID", "applyUrl", "joinMessage",
+        ):
+            value = settings.get(key)
+            if value is not None:
+                DATA[key] = value
+        DATA["server_list"] = {
+            server.name: {
+                "endpoint": server.endpoint, "id": server.api_user,
+                "password": server.api_password, "token": server.api_token,
+            }
+            for server in servers.list_enabled()
+        }
+        DATA["reboot_schedule"] = {
+            schedule.server_name: {
+                "time": schedule.time_value, "frequency": schedule.frequency,
+                "timezone": schedule.timezone,
+            }
+            for schedule in schedules.list_enabled()
+        }
 
         def persist_token(server, token):
             servers.update_token(server.id, token)
@@ -61,7 +90,12 @@ class eggBot(commands.Bot):
         self.fry_health = FryHealthService(self.database_connection)
         self.tracking_service = tracking
         await self.add_cog(CommandsCog(self))
-        await self.add_cog(AdminCommandsCog(self, applications, tracking))
+        await self.add_cog(
+            AdminCommandsCog(
+                self, applications, tracking,
+                servers=servers, settings=settings, schedules=schedules,
+            )
+        )
         await self.add_cog(SupportCommandsCog(self, applications))
         await self.add_cog(TrackingCog(self, tracking))
         self._recurring_task = asyncio.create_task(self.recuring_task())

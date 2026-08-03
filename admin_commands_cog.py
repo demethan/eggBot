@@ -4,7 +4,7 @@ import re
 import aiohttp
 import asyncio
 from discord.ext import commands
-from config import DATA, save_data
+from config import DATA
 from loguru import logger
 from discord.utils import get
 from datetime import datetime, timedelta, timezone
@@ -76,10 +76,16 @@ def admin_only():
     return commands.check(predicate)
 
 class AdminCommandsCog(commands.Cog, name='AdminCommands'):
-    def __init__(self, client, application_service=None, tracking_service=None):
+    def __init__(
+        self, client, application_service=None, tracking_service=None, *,
+        servers=None, settings=None, schedules=None,
+    ):
         self.client = client
         self.application_service = application_service
         self.tracking_service = tracking_service
+        self.servers = servers
+        self.settings = settings
+        self.schedules = schedules
 
     @commands.command(
         brief='Show Minecraft play hours for the current week',
@@ -530,29 +536,33 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         except discord.HTTPException:
             logger.exception("Unable to clear whitelist addition confirmation reactions")
     
-    @commands.command(description='Update dictionary values for IDs.', rest_is_raw=True)
+    @commands.command(description='Update a Discord channel or role ID in the database.', rest_is_raw=True)
     @admin_only()
     async def updateids(self, ctx, key, value):
         """Admin: Update dictionary values for IDs. Usage: !updateids <key> <value>"""
-        if key.lower() == "supportchannelid":
-            DATA["supportChannelID"] = int(value)
-        elif key.lower() == "adminchannelid":
-            DATA["adminChannelID"] = int(value)
-        elif key.lower() == "memberroleid":
-            DATA["memberRoleID"] = int(value)
-        elif key.lower() == "frybotroleid":
-            DATA["fryBotRoleID"] = int(value)
-        elif key.lower() == "applicationreviewerroleid":
-            DATA["applicationReviewerRoleID"] = int(value)
-        else:
+        setting_keys = {
+            "supportchannelid": "supportChannelID",
+            "adminchannelid": "adminChannelID",
+            "memberroleid": "memberRoleID",
+            "frybotroleid": "fryBotRoleID",
+            "applicationreviewerroleid": "applicationReviewerRoleID",
+        }
+        canonical_key = setting_keys.get(key.casefold())
+        if canonical_key is None:
             await ctx.send(
                 "Invalid key. Available keys: supportChannelID, adminChannelID, "
                 "memberRoleID, fryBotRoleID, applicationReviewerRoleID"
             )
             return
-
-        save_data()
-        await ctx.send("Dictionary value updated successfully!")
+        try:
+            setting_value = int(value)
+        except ValueError:
+            await ctx.send("The ID must be a number.")
+            return
+        DATA[canonical_key] = setting_value
+        self.settings.set(canonical_key, setting_value)
+        self.client.database_connection.commit()
+        await ctx.send(f"`{canonical_key}` updated in the database.")
 
 
     @commands.command(description='Get all the meta data of a specific server.', rest_is_raw=True)
@@ -593,7 +603,8 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             arg = set_command_dict.get(arg.lower(), None)        
             if arg is not None and text !="":
                 DATA[arg] = text.strip()
-                save_data()
+                self.settings.set(arg, DATA[arg])
+                self.client.database_connection.commit()
                 await ctx.send("Saved!")
             else:
                 await ctx.send(" !set argument is not valid. usage !set <applyUrl|connectUrl|joinMessage> <text>.")
@@ -614,20 +625,54 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         await ctx.send(embed=embed)
 
     #add command is to add a server.
-    @commands.command(description='Add a server to eggbot.', rest_is_raw=True)
+    @commands.command(description='Add a Fry server; the API password is requested by DM.', rest_is_raw=True)
     @admin_only()
-    async def add(self, ctx, host, user, password):
-        """Admin: Setup a server. The server name will be whatever you setup in the fry config. usage !add <host> <user> <password> The name meta value of the FryBot has to be set first. !setmeta for more info."""
-        logger.debug(host)
-        logger.debug(user)
-        logger.debug(password)
+    async def add(self, ctx, host, user, password=None):
+        """Admin: Add a Fry server. Usage: !add <host> <user>. EggBot requests the API password by DM and discovers the server name from Fry metadata."""
+        if password is None:
+            try:
+                prompt = await ctx.author.send(
+                    f"Reply with the Fry API password for `{host}`. Type `cancel` to stop."
+                )
+            except discord.HTTPException:
+                await ctx.send("I could not DM you. Enable DMs and try again.")
+                return
+
+            def password_check(message):
+                return message.author.id == ctx.author.id and message.channel.id == prompt.channel.id
+
+            try:
+                password_message = await self.client.wait_for(
+                    "message", timeout=120, check=password_check
+                )
+            except asyncio.TimeoutError:
+                await ctx.author.send("Server setup timed out. No changes made.")
+                return
+            password = password_message.content
+            try:
+                await password_message.delete()
+            except discord.HTTPException:
+                logger.warning("Unable to delete Fry password DM from user {}", ctx.author.id)
+            if password.casefold() == "cancel":
+                await ctx.author.send("Server setup cancelled.")
+                return
+        else:
+            try:
+                await ctx.message.delete()
+            except discord.HTTPException:
+                logger.warning("Unable to delete legacy !add invocation containing a password")
+                await ctx.send(
+                    "Warning: I could not delete the command containing the API password. "
+                    "Delete it manually and use `!add <host> <user>` next time."
+                )
         if host is not None and user is not None and password is not None:
             try: #tries to connect to the api site of the frybot.
                 host = host.strip('/')
                 token = await self.client.get_token_by_auth(host, user, password)
-                if token is not None:
-                    await ctx.send("Token acquired!")
-                    await ctx.send(str(token["data"]["token"]))
+                if token is None:
+                    await ctx.send("Authentication failed. Check the URL, username, and password.")
+                    return
+                await ctx.send("Authenticated with Fry.")
             except Exception as inst:
                 logger.exception(inst)
                 await ctx.send("something went wrong, check the url, username and password")
@@ -646,17 +691,26 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 return
 
             try:
-                DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password, 'token':token["data"]["token"]}
-            except KeyError:
-                DATA["server_list"] = {}
-                DATA["server_list"][name] = {"endpoint":host,"id":user,"password":password, 'token':token["data"]["token"]}
-            save_data()
-            await ctx.send("Added successfully !")
+                server_id = self.servers.upsert(
+                    name=name, endpoint=host, api_user=user,
+                    api_password=password, api_token=token["data"]["token"],
+                )
+                self.client.database_connection.commit()
+                DATA.setdefault("server_list", {})[name] = {
+                    "endpoint": host, "id": user, "password": password,
+                    "token": token["data"]["token"],
+                }
+                logger.info("Enabled Fry server {} (database id {})", name, server_id)
+            except Exception:
+                logger.exception("Unable to save Fry server configuration")
+                await ctx.send("The server was found but could not be saved.")
+                return
+            await ctx.send(f"**{name}** was enabled and saved securely.")
         else:
-            await ctx.send(" !set argument is not valid. usage !add <servername> <host> <user> <password>. Ex: !add https://localhost:4321 admin 12345abc")
+            await ctx.send("Usage: `!add <Fry URL> <API user>`")
 
     #remove command is to remove a server from the DATA.
-    @commands.command(description='remove a server from eggbot.', rest_is_raw=True)
+    @commands.command(description='Disable a server while retaining its statistics.', rest_is_raw=True)
     @admin_only()
     async def remove(self, ctx, key):
         """Admin: Remove a server from eggbot. Use the server name as displayed in !s command. usage !remove <servername>"""
@@ -668,18 +722,45 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 key = user.name.lower()
             else:
                 key = key.replace("@","").lower()
-            await ctx.send(key+ " will be removed from the list, confirm with YES ")
-            msg = await self.client.wait_for('message')
-            if msg.content=="YES" and ctx.message.author == msg.author:
+            confirmation = await ctx.send(
+                f"Disable **{key}**? Historical statistics will be retained."
+            )
+            await confirmation.add_reaction("✅")
+            await confirmation.add_reaction("🔴")
+
+            def check(reaction, user):
+                return (
+                    user.id == ctx.author.id
+                    and reaction.message.id == confirmation.id
+                    and str(reaction.emoji) in ("✅", "🔴")
+                )
+
+            try:
+                reaction, _ = await self.client.wait_for(
+                    'reaction_add', timeout=60, check=check
+                )
+            except asyncio.TimeoutError:
+                await confirmation.edit(content="Server removal timed out. No changes made.")
+                return
+            if str(reaction.emoji) == "✅":
                 try:
-                    del DATA["server_list"][key]
-                    save_data()
-                    await ctx.send(key+" as been removed!")
-                    logger.warning(key+" deleted from config")
+                    server = self.servers.get_by_name(key)
+                    if server is None or not server.enabled:
+                        raise KeyError(key)
+                    self.servers.set_enabled(server.id, False)
+                    self.client.database_connection.commit()
+                    DATA["server_list"].pop(key, None)
+                    DATA.get("reboot_schedule", {}).pop(key, None)
+                    await ctx.send(key+" has been disabled; its history was retained.")
+                    logger.warning("{} disabled in server configuration", key)
                 except KeyError:
                     await ctx.send(key+" is not in the config.")
             else:
-                await ctx.send("removal cancelled!")
+                await confirmation.edit(content="Server removal cancelled. No changes made.")
+            try:
+                await confirmation.clear_reactions()
+            except discord.HTTPException:
+                logger.exception("Unable to clear server removal confirmation reactions")
     
     # set_schedule command
     @commands.command(description='Set the server reboot schedule')
@@ -693,39 +774,42 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             await ctx.send("Invalid time format. Please use the format: HH:MM:SS")
             return
 
-        # Get the current date
-        now = datetime.now().date()
+        server_record = self.servers.get_by_name(server)
+        if server_record is None or not server_record.enabled:
+            await ctx.send(f"Unknown enabled server: `{server}`")
+            return
 
-        # Create the datetime object with the current date and specified time
-        reboot_datetime = datetime.combine(now, reboot_time)
-
-        # Convert the reboot_datetime to UTC
-        utc_timezone = pytz.timezone('UTC')
-        reboot_datetime_utc = reboot_datetime.astimezone(utc_timezone)
-
-        # Convert the provided timezone string to a timezone object
+        # Get the current date in the supplied timezone.
         try:
             author_timezone = pytz.timezone(timezone)
         except pytz.UnknownTimeZoneError:
             await ctx.send("Invalid timezone. Please provide a valid timezone.")
             return
+        now = datetime.now(author_timezone).date()
+
+        # Create the datetime object with the current date and specified time
+        reboot_datetime = author_timezone.localize(datetime.combine(now, reboot_time))
+
+        # Convert the reboot_datetime to UTC
+        utc_timezone = pytz.timezone('UTC')
+        reboot_datetime_utc = reboot_datetime.astimezone(utc_timezone)
 
         # Convert reboot time to the user's timezone for display
         reboot_datetime_local = reboot_datetime_utc.astimezone(author_timezone)
-
-        # Ensure that the 'reboot_schedule' key exists in the DATA dictionary
-        if 'reboot_schedule' not in DATA:
-            DATA['reboot_schedule'] = {}
 
         # Convert reboot_datetime_utc to string representation
         reboot_time_str = reboot_datetime_utc.isoformat()
 
         # Store the schedule in the DATA dictionary
-        DATA['reboot_schedule'][server] = {
+        DATA.setdefault('reboot_schedule', {})[server_record.name] = {
             'time': reboot_time_str,
             'frequency': frequency.lower(),
             'timezone': timezone
         }
-        save_data()  # Save the updated schedule to the data file
+        self.schedules.set(
+            server_record.id, time_value=reboot_time_str,
+            frequency=frequency.lower(), timezone=timezone,
+        )
+        self.client.database_connection.commit()
 
         await ctx.send(f"The reboot schedule for {server} has been set to {reboot_datetime_local.strftime('%H:%M:%S')} ({frequency}) in the {timezone} timezone.")

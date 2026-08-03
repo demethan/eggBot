@@ -7,6 +7,7 @@ from cryptography.fernet import Fernet
 
 from eggbot_db.database import Database
 from eggbot_db.repositories import (
+    RebootScheduleRepository,
     ServerCapabilities,
     ServerRepository,
     SettingsRepository,
@@ -211,6 +212,43 @@ class DatabaseTests(unittest.TestCase):
         self.assertEqual(stored.capabilities.metadata_read, "supported")
         self.assertEqual(stored.capabilities.whitelist_write, "permission_denied")
         self.assertEqual([item.name for item in enabled], ["BACON"])
+
+    def test_server_disable_retains_record_and_excludes_it_from_enabled_list(self):
+        self.database.migrate()
+        secret_box = SecretBox(Fernet.generate_key())
+        with self.database.connect() as connection:
+            servers = ServerRepository(connection, secret_box)
+            server_id = servers.upsert(name="BACON", endpoint="https://bacon.example")
+            servers.set_enabled(server_id, False)
+            connection.commit()
+
+            stored = servers.get_by_name("BACON")
+            enabled = servers.list_enabled()
+
+        self.assertIsNotNone(stored)
+        self.assertFalse(stored.enabled)
+        self.assertEqual(enabled, [])
+
+    def test_reboot_schedule_repository_round_trips_enabled_schedules(self):
+        self.database.migrate()
+        secret_box = SecretBox(Fernet.generate_key())
+        with self.database.connect() as connection:
+            servers = ServerRepository(connection, secret_box)
+            schedules = RebootScheduleRepository(connection)
+            server_id = servers.upsert(name="BACON", endpoint="https://bacon.example")
+            schedules.set(
+                server_id,
+                time_value="2026-08-03T12:00:00+00:00",
+                frequency="daily",
+                timezone="America/Montreal",
+            )
+            connection.commit()
+            stored = schedules.list_enabled()
+
+        self.assertEqual(len(stored), 1)
+        self.assertEqual(stored[0].server_name, "BACON")
+        self.assertEqual(stored[0].frequency, "daily")
+        self.assertEqual(stored[0].timezone, "America/Montreal")
 
 if __name__ == "__main__":
     unittest.main()

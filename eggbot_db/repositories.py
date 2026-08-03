@@ -131,6 +131,17 @@ class ServerRepository:
             (self.secrets.encrypt(token), server_id),
         )
 
+    def set_enabled(self, server_id: int, enabled: bool) -> None:
+        self.connection.execute(
+            """
+            UPDATE servers
+            SET enabled = ?,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = ?
+            """,
+            (int(enabled), server_id),
+        )
+
     def set_capabilities(
         self,
         server_id: int,
@@ -181,6 +192,47 @@ class SettingsRepository:
             "SELECT value_json FROM settings WHERE key = ?", (key,)
         ).fetchone()
         return default if row is None else json.loads(row["value_json"])
+
+
+@dataclass(frozen=True)
+class RebootSchedule:
+    server_id: int
+    server_name: str
+    time_value: str
+    frequency: str
+    timezone: str
+
+
+class RebootScheduleRepository:
+    def __init__(self, connection: sqlite3.Connection):
+        self.connection = connection
+
+    def set(self, server_id: int, *, time_value: str, frequency: str, timezone: str) -> None:
+        self.connection.execute(
+            """
+            INSERT INTO reboot_schedules(server_id, time_value, frequency, timezone)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(server_id) DO UPDATE SET
+                time_value = excluded.time_value,
+                frequency = excluded.frequency,
+                timezone = excluded.timezone,
+                updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            """,
+            (server_id, time_value, frequency, timezone),
+        )
+
+    def list_enabled(self) -> list[RebootSchedule]:
+        rows = self.connection.execute(
+            """
+            SELECT r.server_id, s.name AS server_name, r.time_value,
+                   r.frequency, r.timezone
+            FROM reboot_schedules AS r
+            JOIN servers AS s ON s.id = r.server_id
+            WHERE s.enabled = 1
+            ORDER BY s.name COLLATE NOCASE
+            """
+        ).fetchall()
+        return [RebootSchedule(**dict(row)) for row in rows]
 
 
 class WhitelistAdminActionRepository:
