@@ -70,7 +70,8 @@ class eggBot(commands.Bot):
         )
         await self.add_cog(SupportCommandsCog(self, applications))
         await self.add_cog(TrackingCog(self, tracking))
-        self._recurring_task = asyncio.create_task(self.recuring_task())
+        if self._recurring_task is None or self._recurring_task.done():
+            self._recurring_task = asyncio.create_task(self.recuring_task())
         
     # support channel welcome concierge
     async def on_member_join(self, member):
@@ -100,6 +101,11 @@ class eggBot(commands.Bot):
     async def close(self):
         if self._recurring_task is not None:
             self._recurring_task.cancel()
+            try:
+                await self._recurring_task
+            except asyncio.CancelledError:
+                pass
+            self._recurring_task = None
         if self.fry_api is not None:
             await self.fry_api.close()
         if self.database_connection is not None:

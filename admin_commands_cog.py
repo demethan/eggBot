@@ -619,17 +619,12 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         
         set_command_dict = {"applyurl":"applyUrl", "joinmessage":"joinMessage"  }
         
-        try:
-            arg = set_command_dict.get(arg.lower(), None)        
-            if arg is not None and text !="":
-                self.client.runtime_config.set(arg, text.strip())
-                await ctx.send("Saved!")
-            else:
-                await ctx.send(" !set argument is not valid. usage !set <applyUrl|connectUrl|joinMessage> <text>.")
-        except Exception as inst:
-                logger.exception(inst)
-                await ctx.send("you are missing something, try again!")
-                return
+        arg = set_command_dict.get(arg.lower())
+        if arg is not None and text.strip():
+            self.client.runtime_config.set(arg, text.strip())
+            await ctx.send("Saved!")
+        else:
+            await ctx.send("Invalid setting. Usage: `!set <applyUrl|joinMessage> <text>`.")
 
     #display how to for setting the FryBot's meta data.
     @commands.command(description='Not a command. Setting meta is done individually to the @server bot.', rest_is_raw=True)
@@ -684,22 +679,16 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                     "Delete it manually and use `!add <host> <user>` next time."
                 )
         if host is not None and user is not None and password is not None:
-            try: #tries to connect to the api site of the frybot.
-                host = host.strip('/')
-                token, metadata = await self.client.probe_fry_server(host, user, password)
-                if token is None:
-                    await ctx.send("Authentication failed. Check the URL, username, and password.")
-                    return
-                await ctx.send("Authenticated with Fry.")
-            except Exception as inst:
-                logger.exception(inst)
-                await ctx.send("something went wrong, check the url, username and password")
+            host = host.strip('/')
+            token, metadata = await self.client.probe_fry_server(host, user, password)
+            if token is None:
+                await ctx.send("Authentication failed. Check the URL, username, and password.")
                 return
+            await ctx.send("Authenticated with Fry.")
             try:#uses the token to get the name from the meta data.
                 name = metadata['name'].replace(" ", "").lower()
                 await ctx.send(name+" Found!")
-            except Exception as inst:
-                logger.exception(inst)
+            except (KeyError, TypeError, AttributeError):
                 await ctx.send("Failed to get server name, Please set Fry's name in the meta data with the Fry commands. Ex. @FryBot !meta set name <FryBot> ")
                 return
 
@@ -774,6 +763,10 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     @admin_only()
     async def set_schedule(self, ctx, server: str, time: str, frequency: str, timezone: str):
         """Set the server reboot schedule"""
+        frequency = frequency.casefold()
+        if frequency not in ("daily", "weekly"):
+            await ctx.send("Invalid frequency. Use `daily` or `weekly`.")
+            return
         # Convert time to a valid time format
         try:
             reboot_time = datetime.strptime(time, '%H:%M:%S').time()
@@ -809,7 +802,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
 
         self.schedules.set(
             server_record.id, time_value=reboot_time_str,
-            frequency=frequency.lower(), timezone=timezone,
+            frequency=frequency, timezone=timezone,
         )
         self.client.database_connection.commit()
 

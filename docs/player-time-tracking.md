@@ -68,3 +68,7 @@ same command requirements and usage. Reports label the first pack on every serve
 **first observed** with a **tracked duration** and display a disclaimer because that
 pack may have been installed before EggBot began collecting history. Later detected
 pack changes use normal installation labels.
+
+The server-specific `!s <server>` response includes up to five recently active
+players. Open sessions are labeled `online now`; completed activity uses Discord's
+viewer-local relative timestamp rendering.

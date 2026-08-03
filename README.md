@@ -13,7 +13,7 @@ and recovery source while the final runtime readers are migrated.
 
 Member commands include:
 
-- `!s [server]` — server and modpack status
+- `!s [server]` — server/modpack status and recent player activity
 - `!o` — players currently online
 - `!ls [Minecraft IGN]` — last-seen information
 - `!c [server]` — connection information by DM

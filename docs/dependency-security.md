@@ -27,3 +27,7 @@ Security scanning must be repeated in CI and immediately before production deplo
 The `Tests and dependency audit` GitHub Actions workflow runs the Python 3.12 test
 suite and `pip-audit` for every pull request and every push to `master`. Its token has
 read-only repository contents permission.
+
+Direct runtime dependencies use reviewed compatible-release constraints (or an exact
+version where appropriate), while `Pipfile.lock` pins the complete transitive graph.
+Dependency changes require a regenerated lock, the full test suite, and `pip-audit`.
