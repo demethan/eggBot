@@ -21,6 +21,10 @@ Member commands include:
 - `!roll [NdS]` — dice roller
 - `!apply` — membership application flow
 
+Server information and fun commands require the configured member role. `!apply`
+remains available to non-members in the support channel. Administrator commands
+require the configured admin channel plus Manage Roles or Administrator permission.
+
 Administrator commands include:
 
 - `!hours [Minecraft IGN]` — current-week player hours
@@ -30,6 +34,7 @@ Administrator commands include:
 - `!whitelist <Minecraft IGN>` and `!unwhitelist <Minecraft IGN>`
 - `!pendingapps`
 - `!updateids`, `!set`, `!add`, `!remove`, and `!set_schedule`
+- `!setsource <Discord ID> <server>` — authorize a Fry notification source
 
 Discord's `!help` command is the authoritative command reference and includes current
 usage details.
@@ -67,6 +72,7 @@ that database depend on it.
 
 - [Database schema](docs/database-schema.md)
 - [Database-backed configuration](docs/database-configuration.md)
+- [Runtime configuration and notification sources](docs/runtime-configuration.md)
 - [Database backups](docs/database-backups.md)
 - [Player-time tracking](docs/player-time-tracking.md)
 - [Engagement metrics](docs/engagement-metrics.md)

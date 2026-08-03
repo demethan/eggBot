@@ -2,7 +2,6 @@ import discord
 from discord.ext import commands
 from loguru import logger
 
-from config import DATA
 from player_tracking import PlayerTrackingService
 
 
@@ -14,15 +13,19 @@ class TrackingCog(commands.Cog, name="Tracking"):
     @commands.Cog.listener()
     async def on_message(self, message):
         if (
-            message.channel.id != int(DATA.get("generalChannelID", 0))
+            message.channel.id != self.client.runtime_config.require_int("generalChannelID")
             or not message.author.bot
         ):
             return
         try:
             source_id = message.webhook_id or message.author.id
-            source_name = DATA.get("serverNotificationSources", {}).get(
-                str(source_id), message.author.display_name
-            )
+            source_name = self.client.runtime_config.notification_source(source_id)
+            if source_name is None:
+                logger.warning(
+                    "Ignored unconfigured bot/webhook {} in the general channel",
+                    source_id,
+                )
+                return
             result = self.tracking_service.ingest_discord_message(
                 discord_message_id=message.id,
                 discord_channel_id=message.channel.id,

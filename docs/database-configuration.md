@@ -6,6 +6,8 @@ data file remains an import source only; these commands do not write to it.
 Admin commands:
 
 - `!updateids <key> <Discord ID>` updates a channel or role ID.
+- `!setsource <Discord ID> <server>` authorizes a Fry bot or webhook as the
+  notification source for an enabled server.
 - `!set <applyUrl|joinMessage> <text>` updates concierge settings.
 - `!add <Fry URL> <API user>` requests the API password by DM, authenticates
   with Fry, discovers the server name, encrypts its credentials, and enables it.

@@ -23,3 +23,7 @@ pip-audit --path .venv/lib/python3.12/site-packages --progress-spinner off
 Result: `No known vulnerabilities found`.
 
 Security scanning must be repeated in CI and immediately before production deployment because advisory data changes over time.
+
+The `Tests and dependency audit` GitHub Actions workflow runs the Python 3.12 test
+suite and `pip-audit` for every pull request and every push to `master`. Its token has
+read-only repository contents permission.

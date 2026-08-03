@@ -1,9 +1,7 @@
 import discord
 import re
-import aiohttp
 import asyncio
 from discord.ext import commands
-from config import DATA
 from loguru import logger
 from discord.utils import get
 from datetime import datetime, timedelta, timezone
@@ -69,10 +67,18 @@ def engagement_details(item):
     return "\n".join(lines)
 
 #get admins
+async def admin_allowed(ctx):
+    if ctx.guild is None:
+        return False
+    permissions = ctx.author.guild_permissions
+    return (
+        ctx.channel.id == ctx.bot.runtime_config.require_int("adminChannelID")
+        and (permissions.administrator or permissions.manage_roles)
+    )
+
+
 def admin_only():
-    async def predicate(ctx):
-        return ctx.channel.id == DATA["adminChannelID"]
-    return commands.check(predicate)
+    return commands.check(admin_allowed)
 
 class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     def __init__(
@@ -541,16 +547,16 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         """Admin: Update dictionary values for IDs. Usage: !updateids <key> <value>"""
         setting_keys = {
             "supportchannelid": "supportChannelID",
+            "generalchannelid": "generalChannelID",
             "adminchannelid": "adminChannelID",
             "memberroleid": "memberRoleID",
-            "frybotroleid": "fryBotRoleID",
             "applicationreviewerroleid": "applicationReviewerRoleID",
         }
         canonical_key = setting_keys.get(key.casefold())
         if canonical_key is None:
             await ctx.send(
-                "Invalid key. Available keys: supportChannelID, adminChannelID, "
-                "memberRoleID, fryBotRoleID, applicationReviewerRoleID"
+                "Invalid key. Available keys: supportChannelID, generalChannelID, adminChannelID, "
+                "memberRoleID, applicationReviewerRoleID"
             )
             return
         try:
@@ -558,10 +564,25 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         except ValueError:
             await ctx.send("The ID must be a number.")
             return
-        DATA[canonical_key] = setting_value
-        self.settings.set(canonical_key, setting_value)
-        self.client.database_connection.commit()
+        self.client.runtime_config.set(canonical_key, setting_value)
         await ctx.send(f"`{canonical_key}` updated in the database.")
+
+    @commands.command(
+        description=(
+            "Map an authenticated Fry Discord bot/webhook ID to an enabled server. "
+            "Usage: !setsource <Discord ID> <server>"
+        )
+    )
+    @admin_only()
+    async def setsource(self, ctx, discord_id: int, *, server_name: str):
+        server = self.servers.get_by_name(server_name.strip())
+        if server is None or not server.enabled:
+            await ctx.send(f"Unknown enabled server: `{server_name}`")
+            return
+        sources = dict(self.client.runtime_config.get("serverNotificationSources", {}))
+        sources[str(discord_id)] = server.name
+        self.client.runtime_config.set("serverNotificationSources", sources)
+        await ctx.send(f"Discord source `{discord_id}` is now mapped to **{server.name}**.")
 
 
     @commands.command(description='Get all the meta data of a specific server.', rest_is_raw=True)
@@ -574,7 +595,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             arg = user.name.lower()
         else:
             arg = arg.replace("@","").lower()
-        info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
+        info = await self.client.get_fry_meta(arg)
         if not info:#function return false if it can't connect to api
             await ctx.send("Fry doesn't seem to be running. No connection!")
             return
@@ -601,9 +622,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         try:
             arg = set_command_dict.get(arg.lower(), None)        
             if arg is not None and text !="":
-                DATA[arg] = text.strip()
-                self.settings.set(arg, DATA[arg])
-                self.client.database_connection.commit()
+                self.client.runtime_config.set(arg, text.strip())
                 await ctx.send("Saved!")
             else:
                 await ctx.send(" !set argument is not valid. usage !set <applyUrl|connectUrl|joinMessage> <text>.")
@@ -667,7 +686,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         if host is not None and user is not None and password is not None:
             try: #tries to connect to the api site of the frybot.
                 host = host.strip('/')
-                token = await self.client.get_token_by_auth(host, user, password)
+                token, metadata = await self.client.probe_fry_server(host, user, password)
                 if token is None:
                     await ctx.send("Authentication failed. Check the URL, username, and password.")
                     return
@@ -677,13 +696,8 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 await ctx.send("something went wrong, check the url, username and password")
                 return
             try:#uses the token to get the name from the meta data.
-                headers = {'Authorization': 'Bearer '+token["data"]["token"]}
-                async with aiohttp.ClientSession() as session:
-                    async with session.get(host+'/v1/meta', headers=headers) as response:
-                        result =  await response.json()
-                        name = result['data']['name']
-                        name = name.replace(" ","").lower()
-                        await ctx.send(name+" Found!")
+                name = metadata['name'].replace(" ", "").lower()
+                await ctx.send(name+" Found!")
             except Exception as inst:
                 logger.exception(inst)
                 await ctx.send("Failed to get server name, Please set Fry's name in the meta data with the Fry commands. Ex. @FryBot !meta set name <FryBot> ")
@@ -692,13 +706,9 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             try:
                 server_id = self.servers.upsert(
                     name=name, endpoint=host, api_user=user,
-                    api_password=password, api_token=token["data"]["token"],
+                    api_password=password, api_token=token,
                 )
                 self.client.database_connection.commit()
-                DATA.setdefault("server_list", {})[name] = {
-                    "endpoint": host, "id": user, "password": password,
-                    "token": token["data"]["token"],
-                }
                 logger.info("Enabled Fry server {} (database id {})", name, server_id)
             except Exception:
                 logger.exception("Unable to save Fry server configuration")
@@ -708,7 +718,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         else:
             await ctx.send("Usage: `!add <Fry URL> <API user>`")
 
-    #remove command is to remove a server from the DATA.
+    # Disable a server without deleting its history.
     @commands.command(description='Disable a server while retaining its statistics.', rest_is_raw=True)
     @admin_only()
     async def remove(self, ctx, key):
@@ -748,8 +758,6 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                         raise KeyError(key)
                     self.servers.set_enabled(server.id, False)
                     self.client.database_connection.commit()
-                    DATA["server_list"].pop(key, None)
-                    DATA.get("reboot_schedule", {}).pop(key, None)
                     await ctx.send(key+" has been disabled; its history was retained.")
                     logger.warning("{} disabled in server configuration", key)
                 except KeyError:
@@ -799,12 +807,6 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         # Convert reboot_datetime_utc to string representation
         reboot_time_str = reboot_datetime_utc.isoformat()
 
-        # Store the schedule in the DATA dictionary
-        DATA.setdefault('reboot_schedule', {})[server_record.name] = {
-            'time': reboot_time_str,
-            'frequency': frequency.lower(),
-            'timezone': timezone
-        }
         self.schedules.set(
             server_record.id, time_value=reboot_time_str,
             frequency=frequency.lower(), timezone=timezone,

@@ -11,7 +11,6 @@ from application_service import (
     ApplicationService,
     DecisionResult,
 )
-from config import DATA
 from minecraft_api import validate_minecraft_username
 
 
@@ -166,14 +165,16 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
 
         Usage: !apply in the support channel. Type cancel to stop without submitting.
         """
-        if ctx.channel.id != int(DATA["supportChannelID"]):
+        if ctx.channel.id != self.client.runtime_config.require_int("supportChannelID"):
             return
         if self.application_service is None:
             await ctx.author.send("Applications are temporarily unavailable.")
             logger.error("Application service is not configured")
             return
 
-        member_role = discord.utils.get(ctx.guild.roles, id=int(DATA["memberRoleID"]))
+        member_role = discord.utils.get(
+            ctx.guild.roles, id=self.client.runtime_config.require_int("memberRoleID")
+        )
         if member_role in ctx.author.roles:
             await ctx.author.send("You are already a member.")
             return
@@ -224,7 +225,8 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             return
 
         admin_channel = discord.utils.get(
-            ctx.guild.text_channels, id=int(DATA["adminChannelID"])
+            ctx.guild.text_channels,
+            id=self.client.runtime_config.require_int("adminChannelID"),
         )
         if admin_channel is None:
             await ctx.author.send("The admin review channel is unavailable. Please contact an admin.")
@@ -250,7 +252,8 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             return
 
         reviewer_role = discord.utils.get(
-            ctx.guild.roles, id=int(DATA.get("applicationReviewerRoleID", 0))
+            ctx.guild.roles,
+            id=int(self.client.runtime_config.get("applicationReviewerRoleID", 0)),
         )
         try:
             approval_message = await admin_channel.send(
@@ -325,7 +328,7 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             return
         if await self._handle_followup_reaction(reaction, user):
             return
-        if reaction.message.channel.id != int(DATA["adminChannelID"]):
+        if reaction.message.channel.id != self.client.runtime_config.require_int("adminChannelID"):
             return
         emoji = str(reaction.emoji)
         if emoji not in ("👍", "👎") or not self._reviewer_allowed(user):
@@ -367,7 +370,7 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             if present:
                 reviewer_role = discord.utils.get(
                     reaction.message.guild.roles,
-                    id=int(DATA.get("applicationReviewerRoleID", 0)),
+                    id=int(self.client.runtime_config.get("applicationReviewerRoleID", 0)),
                 )
                 await reaction.message.channel.send(
                     content=reviewer_role.mention if reviewer_role else None,
@@ -403,7 +406,8 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
         result = await self.application_service.approve(reaction.message.id, user.id)
         if result.status == "approved":
             member_role = discord.utils.get(
-                reaction.message.guild.roles, id=int(DATA["memberRoleID"])
+                reaction.message.guild.roles,
+                id=self.client.runtime_config.require_int("memberRoleID"),
             )
             try:
                 if applicant is None or member_role is None:
@@ -496,12 +500,13 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                 logger.exception("Unable to remove EggBot's DM prompt reaction")
 
     async def _notify_followup_admin(self, application):
-        admin_channel = self.client.get_channel(int(DATA["adminChannelID"]))
+        admin_channel_id = self.client.runtime_config.require_int("adminChannelID")
+        admin_channel = self.client.get_channel(admin_channel_id)
         if admin_channel is None:
-            admin_channel = await self.client.fetch_channel(int(DATA["adminChannelID"]))
+            admin_channel = await self.client.fetch_channel(admin_channel_id)
         reviewer_role = discord.utils.get(
             admin_channel.guild.roles,
-            id=int(DATA.get("applicationReviewerRoleID", 0)),
+            id=int(self.client.runtime_config.get("applicationReviewerRoleID", 0)),
         )
         reviewer = None
         if application.reviewer_discord_user_id:
