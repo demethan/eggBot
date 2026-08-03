@@ -16,6 +16,64 @@ test suite and security checks from the candidate release before requesting down
 Preserve the current production directory and service unit until the observation
 window is complete.
 
+## Handoff: deploy commits after the initial SQLite cutover
+
+Production has already deployed an earlier `update2026` commit and should already
+have a populated SQLite database. For ordinary updates, **do not run the legacy JSON
+importer automatically**. The importer is a one-time cutover/recovery tool, not part
+of `git pull` or normal startup.
+
+The production Codex session should:
+
+1. Audit the active service, repository revision, database path, key path, and working
+   tree without displaying secrets.
+2. Confirm that the configured database exists, is non-empty, passes
+   `PRAGMA integrity_check`, and contains an `import_runs` row. Report counts only;
+   do not print setting values or encrypted credential columns.
+3. Run an online database backup with `scripts/backup_database.py` and verify its
+   checksum before changing code.
+4. Fetch `origin/update2026`, review the commits being introduced, and run the test
+   suite against the candidate code.
+5. Ask the operator to approve downtime, stop `eggbot.service`, and confirm it is
+   inactive.
+6. Update the existing `update2026` checkout using a fast-forward-only pull. Do not
+   replace `config.json`, `data.json`, the database, or the encryption key.
+7. Start the service and verify Discord login, Fry polling, configuration hydration,
+   and the relevant commands in the journal and Discord.
+
+Suggested read-only database checks (using the actual path discovered from the
+service environment):
+
+```bash
+sqlite3 /var/lib/eggbot/eggbot.sqlite3 'PRAGMA integrity_check;'
+sqlite3 /var/lib/eggbot/eggbot.sqlite3 \
+    'SELECT COUNT(*) AS import_runs FROM import_runs;'
+sqlite3 /var/lib/eggbot/eggbot.sqlite3 \
+    'SELECT COUNT(*) AS enabled_servers FROM servers WHERE enabled = 1;'
+```
+
+The expected update flow is:
+
+```bash
+cd /home/eggbot/eggBot
+git status --short --branch
+git fetch origin update2026
+git log --oneline HEAD..origin/update2026
+.venv/bin/python -m unittest discover -s tests -q
+# After explicit downtime approval:
+systemctl stop eggbot.service
+systemctl is-active eggbot.service
+git pull --ff-only origin update2026
+systemctl start eggbot.service
+systemctl status eggbot.service --no-pager
+journalctl -u eggbot.service --since '10 minutes ago' --no-pager
+```
+
+If `import_runs` is empty, the database is missing, decryption validation fails, or
+the service environment points somewhere unexpected, stop and report the mismatch.
+Do not guess that importing `data.json` is safe. Import only after the operator has
+confirmed this is a fresh cutover/recovery and a protected backup exists.
+
 ## Target layout
 
 - active code: `/home/eggbot/eggBot`
