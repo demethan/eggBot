@@ -1,4 +1,9 @@
-# Production cutover runbook
+# Production operations and historical cutover runbook
+
+> Current state (2026-08-03): the SQLite release is deployed, production is healthy,
+> and commit `838d1f4` is merged to `master`. New deployments must use `master`. The
+> original cutover phases below are retained as a historical recovery reference and
+> must not be repeated against the active production database.
 
 This document is the handoff for a Codex session running as the Linux user `eggbot`.
 The current production bot is under `/home/eggbot/eggBot`. Downtime is acceptable;
@@ -11,14 +16,14 @@ change whitelists, or install system units until the operator explicitly approve
 cutover. Never print `config.json`, Fry passwords/tokens, the Discord token, or the
 encryption key into the conversation or command output.
 
-Use the `update2026` branch from `git@github.com:demethan/eggBot.git`. Run the complete
+Use the `master` branch from `git@github.com:demethan/eggBot.git`. Run the complete
 test suite and security checks from the candidate release before requesting downtime.
 Preserve the current production directory and service unit until the observation
 window is complete.
 
 ## Handoff: deploy commits after the initial SQLite cutover
 
-Production has already deployed an earlier `update2026` commit and should already
+Production has already deployed the SQLite release and has a populated database.
 have a populated SQLite database. For ordinary updates, **do not run the legacy JSON
 importer automatically**. The importer is a one-time cutover/recovery tool, not part
 of `git pull` or normal startup.
@@ -32,11 +37,11 @@ The production Codex session should:
    do not print setting values or encrypted credential columns.
 3. Run an online database backup with `scripts/backup_database.py` and verify its
    checksum before changing code.
-4. Fetch `origin/update2026`, review the commits being introduced, and run the test
+4. Fetch `origin/master`, review the commits being introduced, and run the test
    suite against the candidate code.
 5. Ask the operator to approve downtime, stop `eggbot.service`, and confirm it is
    inactive.
-6. Update the existing `update2026` checkout using a fast-forward-only pull. Do not
+6. Update the existing checkout using a fast-forward-only pull from `master`. Do not
    replace `config.json`, `data.json`, the database, or the encryption key.
 7. Start the service and verify Discord login, Fry polling, configuration hydration,
    and the relevant commands in the journal and Discord.
@@ -57,13 +62,13 @@ The expected update flow is:
 ```bash
 cd /home/eggbot/eggBot
 git status --short --branch
-git fetch origin update2026
-git log --oneline HEAD..origin/update2026
+git fetch origin master
+git log --oneline HEAD..origin/master
 .venv/bin/python -m unittest discover -s tests -q
 # After explicit downtime approval:
 systemctl stop eggbot.service
 systemctl is-active eggbot.service
-git pull --ff-only origin update2026
+git pull --ff-only origin master
 systemctl start eggbot.service
 systemctl status eggbot.service --no-pager
 journalctl -u eggbot.service --since '10 minutes ago' --no-pager
@@ -90,6 +95,9 @@ pause and request approval for those steps if it does not have passwordless scop
 sudo. Do not broaden permissions on secrets to work around an access failure.
 
 ## Phase 1: read-only production audit
+
+The numbered cutover phases from this point through "Observation and completion" are
+historical. Use them only when reconstructing or auditing the original migration.
 
 Record commands and results without displaying file contents containing secrets:
 
@@ -375,17 +383,16 @@ Observe production for at least 24 hours, preferably 48:
 - Daily backup timer produces a verified generation.
 - No secret appears in logs.
 
-After the operator accepts the observation window, merge `update2026` into `master`.
-Keep at least one protected pre-cutover archive and the encryption key according to the
-operations retention policy.
+The observation window was accepted and `update2026` was merged into `master` at
+commit `838d1f4`. Keep at least one protected pre-cutover archive and the encryption
+key according to the operations retention policy.
 
 ## Suggested opening prompt
 
 The operator can begin the new session with:
 
-> Work through `/home/eggbot/eggBot/docs/production-cutover.md`. Start with the
-> read-only audit. Production downtime is acceptable, but do not stop or modify the
-> running bot until I explicitly approve the cutover. Never display secrets.
-
-If the old checkout does not yet contain this file, inspect it from a candidate clone
-of `origin/update2026` before beginning.
+> Update production from `origin/master` using the post-cutover handoff in
+> `/home/eggbot/eggBot/docs/production-cutover.md`. Start with the read-only audit and
+> verified database backup. Do not stop or modify the running bot until I explicitly
+> approve downtime. Never display secrets and never rerun the legacy import during a
+> normal update.

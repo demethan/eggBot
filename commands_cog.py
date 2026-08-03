@@ -5,7 +5,7 @@ import aiohttp
 import asyncio
 import humanize
 from discord.ext import commands
-from config import DATA, save_data
+from config import DATA
 from loguru import logger
 from discord.utils import get
 from datetime import datetime, timedelta

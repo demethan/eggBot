@@ -7,9 +7,6 @@ verify_ssl = true
 
 [packages]
 discord-py = "*"
-python-crontab = "*"
-cron-descriptor = "*"
-croniter = "*"
 loguru = "*"
 humanize = "*"
 pytz = "*"
