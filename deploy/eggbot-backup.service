@@ -1,0 +1,24 @@
+[Unit]
+Description=Create a validated online EggBot database backup
+Documentation=file:/home/eggbot/eggBot/docs/database-backups.md
+ConditionPathExists=/var/lib/eggbot/eggbot.sqlite3
+
+[Service]
+Type=oneshot
+User=eggbot
+Group=eggbot
+WorkingDirectory=/home/eggbot/eggBot
+EnvironmentFile=/etc/eggbot/eggbot.env
+ExecStart=/home/eggbot/eggBot/.venv/bin/python scripts/backup_database.py --keep 30
+UMask=0077
+Nice=10
+StateDirectory=eggbot
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectHome=read-only
+ProtectSystem=strict
+ReadWritePaths=/var/lib/eggbot
+RestrictSUIDSGID=true
+LockPersonality=true
+
