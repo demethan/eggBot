@@ -1,5 +1,9 @@
 # Legacy JSON import
 
+> Production migration is complete. This importer is retained for disaster recovery,
+> validation, and development fixtures. Do not run it as part of a normal pull,
+> restart, or deployment, and never import over the active production database.
+
 The importer copies `data.json` into the migration-managed SQLite schema without changing the source file. It never includes endpoints, API users, passwords, tokens, Discord IDs, or message content in its report.
 
 ## Dry run

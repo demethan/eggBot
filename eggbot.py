@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 
 import discord
-import random
 import json
 import re
 import aiohttp
@@ -26,8 +25,7 @@ from command_errors import reaction_for_command_error
 from player_tracking import PlayerTrackingService
 from tracking_cog import TrackingCog
 from discord.ext import commands
-from config import CONFIG, DATA
-from config import DATA, save_data
+from config import CONFIG, DATA, save_data
 from loguru import logger
 
 
