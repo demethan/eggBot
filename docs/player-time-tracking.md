@@ -50,6 +50,11 @@ Admins with **Manage Roles** can use these commands in the admin channel:
   for recorded pack versions. The global view shows a short current-pack summary;
   `!packstats <server>` sends that server's complete installation history by DM.
 
+Both reports also include the engagement and pack-refresh metrics documented in
+`docs/engagement-metrics.md`: active players, person-hours, and a diminishing-returns
+participation score over 7, 14, and 28 days. Refresh status distinguishes active,
+14-day watch, 28-day candidate, and insufficient-history states.
+
 Both reports default to the last 30 days. Append `week`, `month`, `year`, or `all` to
 select the last 7 days, last 30 days, last 365 days, or all tracked time. Examples:
 `!serverstats year`, `!serverstats pizza all`, and `!packstats bacon month`. Global

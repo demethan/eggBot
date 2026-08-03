@@ -368,6 +368,109 @@ class PlayerTrackingTests(unittest.TestCase):
         self.assertAlmostEqual(period_packs[0].installed_hours, 1.5, places=5)
         self.assertAlmostEqual(period_packs[0].played_hours, 35 / 60, places=5)
 
+    def test_engagement_score_rewards_breadth_with_diminishing_returns(self):
+        self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={},
+            pack_name="Community Pack",
+            pack_version="1.0",
+            observed_at=datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc),
+        )
+        installation_id = self.connection.execute(
+            "SELECT id FROM pack_installations"
+        ).fetchone()[0]
+        for index in range(4):
+            player_id = self.connection.execute(
+                """
+                INSERT INTO players(current_name, first_seen_at)
+                VALUES (?, '2026-08-02T12:00:00+00:00')
+                """,
+                (f"Player{index}",),
+            ).lastrowid
+            self.connection.execute(
+                """
+                INSERT INTO player_sessions(
+                    player_id, server_id, pack_installation_id, started_at,
+                    ended_at, start_source, end_source, confidence
+                ) VALUES (?, ?, ?, '2026-08-02T12:00:00+00:00',
+                          '2026-08-02T13:00:00+00:00', 'api', 'api', 'api_derived')
+                """,
+                (player_id, self.server_id, installation_id),
+            )
+        self.connection.commit()
+
+        broad = self.tracking.engagement_statistics(
+            "BACON", now=datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+        )[0].window(7)
+        self.assertEqual(broad.active_players, 4)
+        self.assertEqual(broad.person_hours, 4.0)
+        self.assertEqual(broad.participation_score, 4.0)
+
+        self.connection.execute("DELETE FROM player_sessions")
+        self.connection.execute("DELETE FROM players")
+        player_id = self.connection.execute(
+            """
+            INSERT INTO players(current_name, first_seen_at)
+            VALUES ('SoloPlayer', '2026-08-02T09:00:00+00:00')
+            """
+        ).lastrowid
+        self.connection.execute(
+            """
+            INSERT INTO player_sessions(
+                player_id, server_id, pack_installation_id, started_at,
+                ended_at, start_source, end_source, confidence
+            ) VALUES (?, ?, ?, '2026-08-02T09:00:00+00:00',
+                      '2026-08-02T13:00:00+00:00', 'api', 'api', 'api_derived')
+            """,
+            (player_id, self.server_id, installation_id),
+        )
+        self.connection.commit()
+
+        concentrated = self.tracking.engagement_statistics(
+            "BACON", now=datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+        )[0].window(7)
+        self.assertEqual(concentrated.active_players, 1)
+        self.assertEqual(concentrated.person_hours, 4.0)
+        self.assertEqual(concentrated.participation_score, 2.0)
+
+    def test_refresh_status_uses_14_and_28_day_inactivity_with_coverage_gate(self):
+        self.tracking.reconcile_api_snapshot(
+            server_name="BACON",
+            players_online={},
+            pack_name="Old Pack",
+            pack_version="1.0",
+            observed_at=datetime(2026, 7, 1, 12, 0, tzinfo=timezone.utc),
+        )
+        now = datetime(2026, 8, 3, 12, 0, tzinfo=timezone.utc)
+        candidate = self.tracking.engagement_statistics("BACON", now=now)[0]
+        self.assertEqual(candidate.refresh_status, "refresh_candidate")
+        self.assertIsNone(candidate.last_activity_at)
+
+        installation_id = self.connection.execute(
+            "SELECT id FROM pack_installations"
+        ).fetchone()[0]
+        player_id = self.connection.execute(
+            """
+            INSERT INTO players(current_name, first_seen_at)
+            VALUES ('RecentPlayer', '2026-07-15T12:00:00+00:00')
+            """
+        ).lastrowid
+        self.connection.execute(
+            """
+            INSERT INTO player_sessions(
+                player_id, server_id, pack_installation_id, started_at,
+                ended_at, start_source, end_source, confidence
+            ) VALUES (?, ?, ?, '2026-07-15T12:00:00+00:00',
+                      '2026-07-15T13:00:00+00:00', 'api', 'api', 'api_derived')
+            """,
+            (player_id, self.server_id, installation_id),
+        )
+        self.connection.commit()
+        watch = self.tracking.engagement_statistics("BACON", now=now)[0]
+        self.assertEqual(watch.refresh_status, "refresh_watch")
+        self.assertEqual(watch.window(14).active_players, 0)
+        self.assertEqual(watch.window(28).active_players, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

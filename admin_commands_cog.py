@@ -18,6 +18,14 @@ STAT_PERIODS = {
     "all": ("All tracked time", None),
 }
 
+REFRESH_STATUS = {
+    "active": "🟢 Active — players in the last 14 days",
+    "refresh_watch": "🟡 Refresh watch — no players in 14 days",
+    "refresh_candidate": "🔴 Refresh candidate — no players in 28 days",
+    "insufficient_data": "⚪ Insufficient history for a 28-day decision",
+    "no_pack_data": "⚪ No current pack history",
+}
+
 
 def parse_stats_scope(arguments):
     tokens = (arguments or "").split()
@@ -29,6 +37,37 @@ def parse_stats_scope(arguments):
     now = datetime.now(timezone.utc)
     since = now - duration if duration is not None else None
     return server_name, label, now, since
+
+
+def engagement_summary(item):
+    window = item.window(7)
+    return (
+        f"{window.active_players} active • {window.person_hours:.1f} person-h • "
+        f"score {window.participation_score:.1f}"
+    )
+
+
+def engagement_details(item):
+    lines = []
+    for window in item.windows:
+        lines.append(
+            f"**{window.days} days:** {window.active_players} active • "
+            f"{window.person_hours:.1f} person-h • "
+            f"score {window.participation_score:.1f}"
+        )
+    last_activity = (
+        f"<t:{int(item.last_activity_at.timestamp())}:F> "
+        f"(<t:{int(item.last_activity_at.timestamp())}:R>)"
+        if item.last_activity_at
+        else "No recorded play"
+    )
+    lines.extend(
+        (
+            f"**Last activity:** {last_activity}",
+            f"**Refresh status:** {REFRESH_STATUS[item.refresh_status]}",
+        )
+    )
+    return "\n".join(lines)
 
 #get admins
 def admin_only():
@@ -94,8 +133,9 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     @commands.command(
         brief='Show tracked activity and current pack by server',
         description=(
-            'Admin: Show cumulative tracked play hours, sessions, players, and the '
-            'current pack. Usage: !serverstats [server] [week|month|year|all]. '
+            'Admin: Show active players, person-hours, participation score, refresh '
+            'status, and current pack. Usage: !serverstats [server] '
+            '[week|month|year|all]. '
             'Defaults to month; server-specific results are sent by DM.'
         ),
     )
@@ -115,6 +155,12 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         statistics = self.tracking_service.server_statistics(
             server_name, now=now, since=since
         )
+        engagement = {
+            item.server_name.casefold(): item
+            for item in self.tracking_service.engagement_statistics(
+                server_name, now=now
+            )
+        }
         embed = discord.Embed(
             title=f"Server statistics — {period_label}", color=color
         )
@@ -122,6 +168,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             embed.description = f"No enabled server found for `{server_name}`."
         for item in statistics[:25]:
             if server_name is None:
+                activity = engagement.get(item.server_name.casefold())
                 current_pack = (
                     f"{item.current_pack} {item.current_version}"
                     if item.current_pack
@@ -130,8 +177,11 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 embed.add_field(
                     name=item.server_name.upper(),
                     value=(
-                        f"{item.total_hours:.1f} h • {item.unique_players} players • "
-                        f"{current_pack}"
+                        f"{engagement_summary(activity) if activity else 'No engagement data'}\n"
+                        f"{period_label}: {item.unique_players} active • "
+                        f"{item.total_hours:.1f} person-h\n"
+                        f"{current_pack} • "
+                        f"{REFRESH_STATUS[activity.refresh_status] if activity else 'Unknown'}"
                     ),
                     inline=False,
                 )
@@ -158,9 +208,17 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 ),
                 inline=False,
             )
+            activity = engagement.get(item.server_name.casefold())
+            if activity is not None:
+                embed.add_field(
+                    name="Current pack engagement",
+                    value=engagement_details(activity),
+                    inline=False,
+                )
         embed.set_footer(
             text=(
-                f"{period_label}. Statistics begin when EggBot starts tracking Fry metadata."
+                f"{period_label}. Participation score = Σ√(each player's hours). "
+                "Statistics begin when EggBot starts tracking Fry metadata."
             )
         )
         await self._send_statistics(ctx, embed, private=server_name is not None)
@@ -168,7 +226,8 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
     @commands.command(
         brief='Show modpack installation and play statistics',
         description=(
-            'Admin: Show pack/version installation duration and tracked player-hours. '
+            'Admin: Show pack engagement, refresh status, installation duration, and '
+            'tracked player-hours. '
             'Usage: !packstats [server] [week|month|year|all]. Defaults to month; '
             'server-specific results are sent by DM.'
         ),
@@ -189,6 +248,12 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
         statistics = self.tracking_service.pack_statistics(
             server_name, now=now, since=since
         )
+        engagement = {
+            item.server_name.casefold(): item
+            for item in self.tracking_service.engagement_statistics(
+                server_name, now=now
+            )
+        }
         embed = discord.Embed(
             title=f"Pack statistics — {period_label}", color=color
         )
@@ -207,12 +272,15 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 embed.description = "No current pack installations are open."
         for item in displayed_statistics[:25]:
             if server_name is None:
+                activity = engagement.get(item.server_name.casefold())
                 embed.add_field(
                     name=item.server_name.upper(),
                     value=(
-                        f"{item.pack_name} {item.version} • "
-                        f"{item.played_hours:.1f} player-hours • "
-                        f"{item.installed_hours:.1f} h tracked"
+                        f"{item.pack_name} {item.version}\n"
+                        f"{engagement_summary(activity) if activity else 'No engagement data'}\n"
+                        f"{period_label}: {item.unique_players} active • "
+                        f"{item.played_hours:.1f} person-h • "
+                        f"{REFRESH_STATUS[activity.refresh_status] if activity else 'Unknown'}"
                     ),
                     inline=False,
                 )
@@ -237,6 +305,15 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
                 ),
                 inline=False,
             )
+        if server_name is not None and engagement:
+            activity = next(iter(engagement.values()))
+            existing_description = embed.description or ""
+            engagement_description = (
+                "**Current pack engagement**\n" + engagement_details(activity)
+            )
+            embed.description = "\n\n".join(
+                part for part in (existing_description, engagement_description) if part
+            )
         if len(displayed_statistics) > 25:
             embed.set_footer(
                 text=(
@@ -248,7 +325,7 @@ class AdminCommandsCog(commands.Cog, name='AdminCommands'):
             embed.set_footer(
                 text=(
                     f"{period_label}. Statistics begin when EggBot starts tracking "
-                    "Fry metadata."
+                    "Fry metadata. Score = Σ√(each player's hours)."
                 )
             )
         await self._send_statistics(ctx, embed, private=server_name is not None)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 import sqlite3
 from dataclasses import dataclass
@@ -71,6 +72,28 @@ class PackStatistics:
     sessions: int
     unique_players: int
     baseline: bool
+
+
+@dataclass(frozen=True)
+class EngagementWindow:
+    days: int
+    active_players: int
+    person_hours: float
+    participation_score: float
+
+
+@dataclass(frozen=True)
+class ServerEngagement:
+    server_name: str
+    pack_name: Optional[str]
+    pack_version: Optional[str]
+    coverage_started_at: Optional[datetime]
+    last_activity_at: Optional[datetime]
+    refresh_status: str
+    windows: tuple[EngagementWindow, ...]
+
+    def window(self, days: int) -> EngagementWindow:
+        return next(item for item in self.windows if item.days == days)
 
 
 def parse_player_event(content: str) -> Optional[ParsedPlayerEvent]:
@@ -614,6 +637,133 @@ class PlayerTrackingService:
             )
             for row in rows
         ]
+
+    def engagement_statistics(
+        self,
+        server_name: Optional[str] = None,
+        *,
+        now: Optional[datetime] = None,
+    ) -> list[ServerEngagement]:
+        current_time = (now or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        name_filter = "" if server_name is None else "AND s.name = ? COLLATE NOCASE"
+        parameters = [] if server_name is None else [server_name.strip()]
+        servers = self.connection.execute(
+            f"""
+            SELECT s.id, s.name, pi.id AS installation_id,
+                   pi.started_at AS installation_started_at,
+                   p.name AS pack_name, pv.version AS pack_version,
+                   (SELECT MIN(o.observed_at) FROM server_observations o
+                    WHERE o.server_id = s.id) AS first_observed_at
+            FROM servers AS s
+            LEFT JOIN pack_installations AS pi
+                   ON pi.server_id = s.id AND pi.ended_at IS NULL
+            LEFT JOIN pack_versions AS pv ON pv.id = pi.pack_version_id
+            LEFT JOIN packs AS p ON p.id = pv.pack_id
+            WHERE s.enabled = 1 {name_filter}
+            ORDER BY s.name COLLATE NOCASE
+            """,
+            parameters,
+        ).fetchall()
+        results = []
+        for server in servers:
+            coverage = self._stored_datetime(
+                server["installation_started_at"] or server["first_observed_at"]
+            )
+            session_parameters = [server["id"]]
+            installation_filter = ""
+            if server["installation_id"] is not None:
+                installation_filter = "AND ps.pack_installation_id = ?"
+                session_parameters.append(server["installation_id"])
+            sessions = self.connection.execute(
+                f"""
+                SELECT player_id, started_at, ended_at
+                FROM player_sessions AS ps
+                WHERE ps.server_id = ? {installation_filter}
+                """,
+                session_parameters,
+            ).fetchall()
+            windows = tuple(
+                self._engagement_window(
+                    sessions,
+                    days,
+                    now=current_time,
+                    coverage_started_at=coverage,
+                )
+                for days in (7, 14, 28)
+            )
+            last_activity = None
+            for session in sessions:
+                activity = (
+                    current_time
+                    if session["ended_at"] is None
+                    else datetime.fromisoformat(session["ended_at"])
+                )
+                if last_activity is None or activity > last_activity:
+                    last_activity = activity
+            active_14 = next(item for item in windows if item.days == 14)
+            active_28 = next(item for item in windows if item.days == 28)
+            coverage_days = (
+                (current_time - coverage).total_seconds() / 86400.0
+                if coverage is not None
+                else 0.0
+            )
+            if server["installation_id"] is None:
+                refresh_status = "no_pack_data"
+            elif active_14.active_players > 0:
+                refresh_status = "active"
+            elif active_28.active_players > 0:
+                refresh_status = "refresh_watch"
+            elif coverage_days >= 28:
+                refresh_status = "refresh_candidate"
+            else:
+                refresh_status = "insufficient_data"
+            results.append(
+                ServerEngagement(
+                    server_name=server["name"],
+                    pack_name=server["pack_name"],
+                    pack_version=server["pack_version"],
+                    coverage_started_at=coverage,
+                    last_activity_at=last_activity,
+                    refresh_status=refresh_status,
+                    windows=windows,
+                )
+            )
+        return results
+
+    @staticmethod
+    def _engagement_window(
+        sessions,
+        days: int,
+        *,
+        now: datetime,
+        coverage_started_at: Optional[datetime],
+    ) -> EngagementWindow:
+        window_start = now - timedelta(days=days)
+        if coverage_started_at is not None:
+            window_start = max(window_start, coverage_started_at)
+        player_hours: dict[int, float] = {}
+        for session in sessions:
+            started_at = datetime.fromisoformat(session["started_at"])
+            ended_at = (
+                datetime.fromisoformat(session["ended_at"])
+                if session["ended_at"] is not None
+                else now
+            )
+            overlap_start = max(started_at, window_start)
+            overlap_end = min(ended_at, now)
+            hours = max(0.0, (overlap_end - overlap_start).total_seconds() / 3600.0)
+            if hours > 0:
+                player_hours[session["player_id"]] = (
+                    player_hours.get(session["player_id"], 0.0) + hours
+                )
+        return EngagementWindow(
+            days=days,
+            active_players=len(player_hours),
+            person_hours=round(sum(player_hours.values()), 6),
+            participation_score=round(
+                sum(math.sqrt(hours) for hours in player_hours.values()), 6
+            ),
+        )
 
     def pack_statistics(
         self,
