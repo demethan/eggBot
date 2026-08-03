@@ -5,7 +5,7 @@ import asyncio
 from discord.ext import commands
 from loguru import logger
 from discord.utils import get
-from datetime import datetime
+from datetime import datetime, timezone
 import pytz
 
 color=0x00ff00
@@ -63,6 +63,19 @@ class CommandsCog(commands.Cog, name='Commands'):
                 message+="Game Version :: "+info.get("game_version","").lstrip()+"\n"
                 message+="Game Url :: "+info.get("game_url","")+"\n"
                 message +="```"
+                recent = self.client.tracking_service.recent_players(arg)
+                if recent:
+                    lines = []
+                    for player, activity_at, online in recent:
+                        if online:
+                            activity = "online now"
+                        else:
+                            timestamp = datetime.fromisoformat(activity_at)
+                            if timestamp.tzinfo is None:
+                                timestamp = timestamp.replace(tzinfo=timezone.utc)
+                            activity = f"<t:{int(timestamp.timestamp())}:R>"
+                        lines.append(f"**{player}:** {activity}")
+                    message += "\n**Recent player activity**\n" + "\n".join(lines)
                 
                 author = ctx.message.author
                 await author.send(message)
@@ -88,7 +101,7 @@ class CommandsCog(commands.Cog, name='Commands'):
                             embed.add_field(name="🟡 "+info["name"], value=message, inline=False)
                         else:
                             embed.add_field(name="🔴 "+info["name"], value=message, inline=False)
-                    except:
+                    except (KeyError, TypeError, AttributeError):
                         embed.add_field(name="‼ "+info["name"], value="Meta data is missing!", inline=False)
             embed.set_footer(text="!s <servername> for more details, !o for detail online.")
             await ctx.send(embed=embed)
@@ -141,7 +154,7 @@ class CommandsCog(commands.Cog, name='Commands'):
                 try:
                     for player in info["players_online"]:
                         message += "     "+player+" :: "+str(info["players_online"][player]["duration"])+" min\n"
-                except:
+                except (KeyError, TypeError):
                     pass        
         message += "```"
         await ctx.send(message)
@@ -186,7 +199,7 @@ class CommandsCog(commands.Cog, name='Commands'):
                 embed.add_field(name="\u200b", value = "***"+info["name"]+":***",inline=False)
                 try:
                     embed.add_field(name="✅ By redirect name:", value =info["server_hostname"], inline=False)
-                except:
+                except (KeyError, TypeError):
                     embed.add_field(name="‼ Sorry!", value="Info missing! Contact an admin!", inline=False)
             embed.set_footer(text = "!c <servername> for more details")
         author = ctx.message.author

@@ -118,6 +118,27 @@ class PlayerTrackingService:
         ).fetchone()
         return row["last_seen_at"] if row and row["last_seen_at"] else "Unknown"
 
+    def recent_players(self, server_name: str, limit: int = 5) -> list[tuple[str, str, bool]]:
+        rows = self.connection.execute(
+            """
+            SELECT p.current_name,
+                   MAX(COALESCE(ps.ended_at, ps.started_at)) AS activity_at,
+                   MAX(CASE WHEN ps.ended_at IS NULL THEN 1 ELSE 0 END) AS online
+            FROM player_sessions AS ps
+            JOIN players AS p ON p.id = ps.player_id
+            JOIN servers AS s ON s.id = ps.server_id
+            WHERE s.name = ? COLLATE NOCASE
+            GROUP BY p.id, p.current_name
+            ORDER BY activity_at DESC
+            LIMIT ?
+            """,
+            (server_name.strip(), max(1, min(limit, 10))),
+        ).fetchall()
+        return [
+            (row["current_name"], row["activity_at"], bool(row["online"]))
+            for row in rows
+        ]
+
     def ingest_discord_message(
         self,
         *,

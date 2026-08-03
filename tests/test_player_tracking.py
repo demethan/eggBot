@@ -54,6 +54,21 @@ class PlayerTrackingTests(unittest.TestCase):
         self.assertEqual(session["start_source"], "discord")
         self.assertEqual(session["end_source"], "discord")
 
+    def test_recent_players_reports_server_activity_and_online_state(self):
+        self.ingest(1, "Earlier has joined the server.", 1)
+        self.ingest(2, "Earlier has left the server.", 20)
+        self.ingest(3, "OnlineNow has joined the server.", 30)
+
+        recent = self.tracking.recent_players("bacon")
+
+        self.assertEqual(
+            recent,
+            [
+                ("OnlineNow", "2026-08-02T12:30:00+00:00", True),
+                ("Earlier", "2026-08-02T12:20:00+00:00", False),
+            ],
+        )
+
     def test_duplicate_message_and_duplicate_join_do_not_duplicate_session(self):
         self.ingest(1, "Demethan has joined the server.")
         duplicate = self.ingest(1, "Demethan has joined the server.")
