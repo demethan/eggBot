@@ -1,11 +1,8 @@
 #!/usr/bin/env python
 
 import discord
-import json
 import re
-import aiohttp
 import asyncio
-import datetime
 import os
 from pathlib import Path
 from commands_cog import CommandsCog
@@ -13,19 +10,16 @@ from admin_commands_cog import AdminCommandsCog
 from support_commands_cog import SupportCommandsCog
 from application_service import ApplicationService
 from eggbot_db.database import Database
-from eggbot_db.repositories import (
-    RebootScheduleRepository,
-    ServerRepository,
-    SettingsRepository,
-)
+from eggbot_db.repositories import Server, ServerRepository
 from eggbot_db.secrets import SecretBox
 from fry_api import FryApiClient
 from fry_health import FryHealthService
 from command_errors import reaction_for_command_error
 from player_tracking import PlayerTrackingService
 from tracking_cog import TrackingCog
+from runtime_config import RuntimeConfig
 from discord.ext import commands
-from config import CONFIG, DATA, save_data
+from config import CONFIG
 from loguru import logger
 
 
@@ -37,6 +31,8 @@ class eggBot(commands.Bot):
         self.fry_health = None
         self._fry_poll_errors = {}
         self._recurring_task = None
+        self.servers = None
+        self.runtime_config = None
 
     async def setup_hook(self):
         database = Database(Path(os.environ.get("EGGBOT_DB_PATH", "eggbot.sqlite3")))
@@ -49,31 +45,8 @@ class eggBot(commands.Bot):
         )
         self.database_connection = database.connect()
         servers = ServerRepository(self.database_connection, secrets)
-        settings = SettingsRepository(self.database_connection)
-        schedules = RebootScheduleRepository(self.database_connection)
-
-        # Keep legacy readers operational while SQLite is the durable config source.
-        for key in (
-            "supportChannelID", "adminChannelID", "memberRoleID", "fryBotRoleID",
-            "applicationReviewerRoleID", "applyUrl", "joinMessage",
-        ):
-            value = settings.get(key)
-            if value is not None:
-                DATA[key] = value
-        DATA["server_list"] = {
-            server.name: {
-                "endpoint": server.endpoint, "id": server.api_user,
-                "password": server.api_password, "token": server.api_token,
-            }
-            for server in servers.list_enabled()
-        }
-        DATA["reboot_schedule"] = {
-            schedule.server_name: {
-                "time": schedule.time_value, "frequency": schedule.frequency,
-                "timezone": schedule.timezone,
-            }
-            for schedule in schedules.list_enabled()
-        }
+        self.servers = servers
+        self.runtime_config = RuntimeConfig(self.database_connection, servers)
 
         def persist_token(server, token):
             servers.update_token(server.id, token)
@@ -91,7 +64,8 @@ class eggBot(commands.Bot):
         await self.add_cog(
             AdminCommandsCog(
                 self, applications, tracking,
-                servers=servers, settings=settings, schedules=schedules,
+                servers=servers, settings=self.runtime_config.settings,
+                schedules=self.runtime_config.schedules,
             )
         )
         await self.add_cog(SupportCommandsCog(self, applications))
@@ -103,7 +77,9 @@ class eggBot(commands.Bot):
         guild = member.guild
         if guild.system_channel is None:
             channel = await member.create_dm()
-            await channel.send(DATA["joinMessage"].format(member=member.mention,applyUrl=DATA["applyUrl"]))
+            await channel.send(self.runtime_config.get("joinMessage").format(
+                member=member.mention, applyUrl=self.runtime_config.get("applyUrl")
+            ))
         
     
     async def timer(self,time):
@@ -130,84 +106,32 @@ class eggBot(commands.Bot):
             self.database_connection.close()
         await super().close()
 
-    async def get_token_by_auth(self, host, user, password):
-        timeout = aiohttp.ClientTimeout(total=15)
-        async with aiohttp.ClientSession(timeout=timeout) as session:
-            async with session.post(f'{host}/v1/token/',data={"id": user, "password": password}) as resp:
-                if resp.status >= 400:
-                    logger.debug(await resp.text())
-                    return None
-                return await resp.json()
+    async def probe_fry_server(self, endpoint, api_user, api_password):
+        candidate = Server(-1, "candidate", endpoint, api_user, api_password, None, True)
+        token = await self.fry_api.authenticate(candidate, force=True, persist=False)
+        if not token.ok:
+            return None, None
+        metadata = await self.fry_api.get_metadata(candidate)
+        return token.value, metadata.value if metadata.ok else None
 
-    async def get_token(self,name, force=False):
-        server = DATA["server_list"].get(name)
-        if server is None:
-            return None
-
-        if force is True or server.get('token') is None:
-            result = await self.get_token_by_auth(
-                server["endpoint"], server["id"], server["password"]
-            )
-            if not result:
-                return None
-
-            server["token"] = result["data"]["token"]
-            save_data()
-        return server["token"]
-
-
-    #get fry meta data
-    async def get_fry_meta(self,name,serverObj):
-        logger.debug(f"geting meta for {name}")
+    async def get_fry_meta(self, name):
+        logger.debug("Getting metadata for {}", name)
         self._fry_poll_errors.pop(name, None)
-        try:
-            token = await self.get_token(name)
-            headers = {}
-            if token is not None:
-                headers['Authorization'] = 'Bearer '+ token
-            timeout = aiohttp.ClientTimeout(total=15)
-            async with aiohttp.ClientSession(timeout=timeout) as session:
-                async with session.get(DATA["server_list"][name]["endpoint"]+'/v1/meta', headers=headers) as resp:
-                    if resp.status >= 400:
-                        if resp.status in (401, 403):
-                            refreshed = await self.get_token(name, True)
-                            if refreshed:
-                                headers = {'Authorization': 'Bearer ' + refreshed}
-                                async with session.get(
-                                    DATA["server_list"][name]["endpoint"]+'/v1/meta',
-                                    headers=headers,
-                                ) as retry:
-                                    if retry.status < 400:
-                                        result = await retry.json()
-                                        logger.debug(result["data"])
-                                        return result["data"]
-                                    status = retry.status
-                            else:
-                                status = resp.status
-                        else:
-                            status = resp.status
-                        self._fry_poll_errors[name] = f"HTTP {status}"
-                        logger.warning("Fry metadata request for {} returned HTTP {}", name, status)
-                        return False
-                    result = await resp.json()
-                    logger.debug(result["data"])
-                    return result["data"]
-        except Exception as error:
-            error_name = type(error).__name__
-            detail = str(error).strip()
-            self._fry_poll_errors[name] = (
-                f"{error_name}: {detail[:200]}" if detail else error_name
-            )
-            logger.warning("Fry metadata request for {} failed: {}", name, error_name)
+        server = self.servers.get_by_name(name)
+        if server is None or not server.enabled:
+            self._fry_poll_errors[name] = "Server is not configured"
             return False
+        result = await self.fry_api.get_metadata(server)
+        if result.ok:
+            return result.value
+        self._fry_poll_errors[name] = result.error.code.value
+        logger.warning("Fry metadata request for {} failed: {}", name, result.error.code.value)
+        return False
     
     #gets current player online meta data from fry and store it to json for !ls command use.
     async def store_online_users(self):
-        server_names = list(DATA["server_list"])
-        methods = [
-            self.get_fry_meta(name, DATA["server_list"][name])
-            for name in server_names
-        ]
+        server_names = [server.name for server in self.servers.list_enabled()]
+        methods = [self.get_fry_meta(name) for name in server_names]
             
         data = await asyncio.gather(*methods)
         results = dict(zip(server_names, data))
@@ -226,20 +150,7 @@ class eggBot(commands.Bot):
                         if key != "players_online"
                     },
                 )
-                if info["players_online"].__len__() > 0:
-                    DATA["server_list"][server]["players"] = info["players_online"]
-                    players_online = info["players_online"]
-                    current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                    
-                    # Update each player's information and last seen timestamp
-                    for player in players_online:
-                        player_key = player.strip().lower()
-                        player_data = {"last_seen": current_time}
-                        DATA["players"][player_key] = player_data
-                        
-                    
-        logger.info("Storing online players...")
-        save_data()
+        logger.info("Stored Fry snapshots in SQLite")
         if self.fry_health is not None:
             transition = self.fry_health.record_cycle(
                 {
@@ -257,7 +168,7 @@ class eggBot(commands.Bot):
         if transition.action == "none":
             return
         await self.wait_until_ready()
-        channel_id = transition.alert_channel_id or int(DATA["adminChannelID"])
+        channel_id = transition.alert_channel_id or self.runtime_config.require_int("adminChannelID")
         channel = self.get_channel(channel_id)
         if channel is None:
             logger.error("Unable to find admin channel {} for Fry health alert", channel_id)
@@ -338,7 +249,7 @@ class eggBot(commands.Bot):
             except discord.HTTPException:
                 logger.exception("Unable to update Fry connectivity alert")
         if message is None:
-            role_id = DATA.get("applicationReviewerRoleID")
+            role_id = self.runtime_config.get("applicationReviewerRoleID")
             mention = f"<@&{int(role_id)}>" if role_id else None
             message = await channel.send(
                 content=mention,
@@ -395,29 +306,25 @@ class eggBot(commands.Bot):
             logger.opt(exception=original).error("Unexpected command failure")
             await ctx.send("The command could not be completed.")
 
-    # Define a function to validate DATA and set bot status
     async def validate_data(self):
-        admin_channel_id = DATA.get("adminChannelID")  # Get admin channel ID from DATA
+        admin_channel_id = self.runtime_config.get("adminChannelID")
 
         if admin_channel_id is None:
-            print("Admin channel ID is not set in DATA. Please provide the correct channel ID.")
-            await bot.change_presence(status=discord.Status.dnd, activity=discord.Game(name="Admin Channel Not found or possible DATA corruption."))
+            logger.error("Admin channel ID is not configured")
+            await bot.change_presence(status=discord.Status.dnd, activity=discord.Game(name="Admin channel not configured"))
             return
 
         admin_channel = bot.get_channel(admin_channel_id)
 
         if not admin_channel:
-            print("Admin channel not found. Please check the channel ID in DATA.")
+            logger.error("Configured admin channel {} was not found", admin_channel_id)
             await bot.change_presence(status=discord.Status.offline)
             return
 
-        if "server_list" not in DATA or "players" not in DATA:
-            await admin_channel.send("WARNING: DATA structure is missing required keys. Check your data.")
-            if "players" not in DATA:
-                DATA["players"] = {}  # Initialize with an empty dictionary
-        else:
-            await admin_channel.send("DATA validation passed. Bot is ready to run.")
-            await bot.change_presence(status=discord.Status.online)
+        if not self.servers.list_enabled():
+            await admin_channel.send("WARNING: No enabled Fry servers are configured.")
+            return
+        await bot.change_presence(status=discord.Status.online)
 
 
 

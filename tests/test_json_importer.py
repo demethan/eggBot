@@ -1,5 +1,6 @@
 import json
 import subprocess
+import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -190,7 +191,7 @@ class LegacyJsonImporterTests(unittest.TestCase):
     def test_cli_dry_run_needs_no_database_or_secret_key(self):
         result = subprocess.run(
             [
-                str(Path(__file__).parents[1] / ".venv" / "bin" / "python"),
+                sys.executable,
                 "scripts/import_legacy_json.py",
                 "--source",
                 str(self.source),

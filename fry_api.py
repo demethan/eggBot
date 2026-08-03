@@ -179,7 +179,9 @@ class FryApiClient:
             await asyncio.sleep(self._retry_delay * (attempt + 1))
         return outcome
 
-    async def authenticate(self, server: Server, *, force: bool = False) -> FryResult[str]:
+    async def authenticate(
+        self, server: Server, *, force: bool = False, persist: bool = True
+    ) -> FryResult[str]:
         if not force:
             token = self._tokens.get(server.id) or server.api_token
             if token:
@@ -215,7 +217,7 @@ class FryApiClient:
             return FryResult.failure(FryErrorCode.INVALID_RESPONSE)
 
         self._tokens[server.id] = token
-        if self._on_token_refreshed:
+        if persist and self._on_token_refreshed:
             try:
                 callback_result = self._on_token_refreshed(server, token)
                 if inspect.isawaitable(callback_result):

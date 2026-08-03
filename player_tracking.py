@@ -111,6 +111,13 @@ class PlayerTrackingService:
     def __init__(self, connection: sqlite3.Connection):
         self.connection = connection
 
+    def last_seen(self, player_name: str) -> str:
+        row = self.connection.execute(
+            "SELECT last_seen_at FROM players WHERE current_name = ? COLLATE NOCASE",
+            (player_name.strip(),),
+        ).fetchone()
+        return row["last_seen_at"] if row and row["last_seen_at"] else "Unknown"
+
     def ingest_discord_message(
         self,
         *,

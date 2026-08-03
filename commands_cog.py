@@ -1,24 +1,38 @@
 import discord
 import random
 import re
-import aiohttp
 import asyncio
-import humanize
 from discord.ext import commands
-from config import DATA
 from loguru import logger
 from discord.utils import get
-from datetime import datetime, timedelta
+from datetime import datetime
 import pytz
 
 color=0x00ff00
+
+
+async def member_allowed(ctx):
+    if ctx.guild is None:
+        return False
+    if ctx.author.guild_permissions.administrator:
+        return True
+    member_role_id = ctx.bot.runtime_config.require_int("memberRoleID")
+    return any(role.id == member_role_id for role in ctx.author.roles)
+
+
+def member_only():
+    return commands.check(member_allowed)
 
 class CommandsCog(commands.Cog, name='Commands'):
     def __init__(self, client):
         self.client = client
 
+    def _servers(self):
+        return self.client.servers.list_enabled()
+
     #status command, s for short, because people are lazy.
     @commands.command(description='Get info about one or all the Minecraft servers')
+    @member_only()
     async def s(self, ctx, arg=None):
         """Get info about one or all the Minecraft servers"""
         if arg is not None:
@@ -29,7 +43,7 @@ class CommandsCog(commands.Cog, name='Commands'):
             else:
                 arg = (arg.replace("@","")).lower()
             #get arg(server) info details a send that
-            info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
+            info = await self.client.get_fry_meta(arg)
             if info:
                 message ="```asciidoc\n"
                 message+="= "+info["name"]+" =\n\n"
@@ -56,8 +70,8 @@ class CommandsCog(commands.Cog, name='Commands'):
         else:
             #send complete server list info
             methods = []
-            for name, server in DATA["server_list"].items():
-                methods.append(self.client.get_fry_meta(name,server))
+            for server in self._servers():
+                methods.append(self.client.get_fry_meta(server.name))
             
             data = await asyncio.gather(*methods)
             data.sort(key=lambda s: "" if not s else s.get("name"))
@@ -81,6 +95,7 @@ class CommandsCog(commands.Cog, name='Commands'):
                 
     #last seen commands
     @commands.command(description='Who was last on the servers')
+    @member_only()
     async def ls(self, ctx, username: str = commands.parameter(default=None, description=":in game name used in minecraft")):
         """Shows last seen information for players.
         Usage:
@@ -88,23 +103,19 @@ class CommandsCog(commands.Cog, name='Commands'):
         !ls <ign>  Show last seen information for a specific player.
         """
         message = "```asciidoc\n"
-        servers = sorted(DATA["server_list"].keys())
-        
         if username is None:
-            for server in servers:
-                message += "= " + server.upper() + " =\n"
-                try:
-                    for player in DATA["server_list"][server]["players"]:
-                        if player is None:
-                            pass
-                        else:
-                            timegone = datetime.utcnow() - datetime.strptime(DATA["server_list"][server]["players"][player]["login_time"],"%Y-%m-%d %H:%M:%S.%f")
-                            message += player + " :: "+ str(humanize.naturaltime(timegone)) +". \n"
-                except:
-                    pass
+            servers = self._servers()
+            snapshots = await asyncio.gather(
+                *(self.client.get_fry_meta(server.name) for server in servers)
+            )
+            for server, info in zip(servers, snapshots):
+                message += "= " + server.name.upper() + " =\n"
+                players = info.get("players_online", {}) if info else {}
+                for player, details in players.items():
+                    duration = details.get("duration", "unknown") if isinstance(details, dict) else "unknown"
+                    message += f"{player} :: online for {duration} min.\n"
         else:
-            username_key = username.strip().lower()
-            last_seen = DATA["players"].get(username_key, {}).get("last_seen", "Unknown")
+            last_seen = self.client.tracking_service.last_seen(username)
             message += f"{username} :: {str(last_seen)}\n"
         
         message += "```"
@@ -113,11 +124,12 @@ class CommandsCog(commands.Cog, name='Commands'):
 
     #get online users
     @commands.command(description='who is currently online')
+    @member_only()
     async def o(self, ctx):
         """Who is currently online and for how long."""
         methods = []
-        for name, server in DATA["server_list"].items():
-            methods.append(self.client.get_fry_meta(name,server))
+        for server in self._servers():
+            methods.append(self.client.get_fry_meta(server.name))
             
         data = await asyncio.gather(*methods)
         data.sort(key=lambda s: "" if not s else s.get("name"))
@@ -137,6 +149,7 @@ class CommandsCog(commands.Cog, name='Commands'):
 
     #connection info command
     @commands.command(description='Get connection instructions')
+    @member_only()
     async def c(self, ctx, arg=None):
         """server connection info"""
         
@@ -148,7 +161,7 @@ class CommandsCog(commands.Cog, name='Commands'):
                 arg = user.name.lower()
             else:
                 arg = (arg.replace("@","")).lower()
-            info = await self.client.get_fry_meta(arg,DATA["server_list"][arg])
+            info = await self.client.get_fry_meta(arg)
             embed=discord.Embed(title="Detailed Connection Info", color=color)
             embed.add_field(name="\u200b", value = "***"+info["name"]+":***",inline=False)
             embed.add_field(name="✅ By redirect name:", value =info["server_hostname"], inline=False)
@@ -157,8 +170,8 @@ class CommandsCog(commands.Cog, name='Commands'):
             
         else:
             methods = []
-            for name, server in DATA["server_list"].items():
-                methods.append(self.client.get_fry_meta(name,server))
+            for server in self._servers():
+                methods.append(self.client.get_fry_meta(server.name))
         
             data = await asyncio.gather(*methods)
             data.sort(key=lambda s: s["name"])
@@ -182,6 +195,7 @@ class CommandsCog(commands.Cog, name='Commands'):
     
     # schedule command
     @commands.command(description='List the server reboot schedules\n\nUsage: !schedule <timezone>\n\nExample: !schedule America/New_York')
+    @member_only()
     async def schedule(self, ctx, timezone: str):
         """List the server reboot schedules"""
         message = ""
@@ -191,19 +205,20 @@ class CommandsCog(commands.Cog, name='Commands'):
             await ctx.send("Please provide the timezone argument. Example: !schedule America/New_York")
             return
 
-        for server, schedule_info in DATA['reboot_schedule'].items():
-            reboot_time_str = schedule_info['time']
+        for schedule_info in self.client.runtime_config.schedules.list_enabled():
+            reboot_time_str = schedule_info.time_value
             reboot_time_utc = datetime.fromisoformat(reboot_time_str).astimezone(pytz.UTC)
             reboot_time_local = reboot_time_utc.astimezone(output_timezone)
             formatted_time = reboot_time_local.strftime('%H:%M:%S')
 
-            message += f"{server}: {formatted_time} ({schedule_info['frequency']})\n"
+            message += f"{schedule_info.server_name}: {formatted_time} ({schedule_info.frequency})\n"
 
         embed = discord.Embed(title="Reboot Schedule", color=color)
         embed.add_field(name="Server Reboot Times", value=message, inline=False)
         await ctx.send(embed=embed)
 
     @commands.command(brief='Rolls dice for DND games', description='Rolls dice for DND games. Format: !roll NdS')
+    @member_only()
     async def roll(self, ctx, dice: str = commands.parameter(default="1d100", description="<NdS> exemple: 3d4")):
         """Rolls dice for DND games where N is between 1 and 10 and S is a valid DND dice side (4, 6, 8, 10, 12, 20, or 100). Only 1d100 is allowed."""
         try:
