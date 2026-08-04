@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, Mock
 from commands_cog import CommandsCog
 
 
-def make_context(*, admin=False, channel_id=10):
+def make_context(*, admin=False, channel_id=10, guild=True):
     author = SimpleNamespace(
         id=123,
         name="discord_user",
@@ -18,6 +18,7 @@ def make_context(*, admin=False, channel_id=10):
         send=AsyncMock(),
     )
     return SimpleNamespace(
+        guild=SimpleNamespace() if guild else None,
         author=author,
         channel=SimpleNamespace(id=channel_id),
         send=AsyncMock(),
@@ -53,6 +54,18 @@ class HoursCommandTests(unittest.IsolatedAsyncioTestCase):
         self.tracking.weekly_hours.assert_called_once_with("OwnIGN")
         ctx.author.send.assert_awaited_once()
         ctx.send.assert_not_awaited()
+
+    async def test_member_hours_works_in_dm_without_guild_permissions(self):
+        link = SimpleNamespace(minecraft_name="OwnIGN")
+        self.applications.find_player_links.return_value = [link]
+        ctx = make_context(channel_id=99, guild=False)
+        del ctx.author.guild_permissions
+
+        await self.cog.hours.callback(self.cog, ctx, minecraft_name=None)
+
+        self.applications.find_player_links.assert_called_once_with("123")
+        self.tracking.weekly_hours.assert_called_once_with("OwnIGN")
+        ctx.author.send.assert_awaited_once()
 
     async def test_member_cannot_lookup_supplied_ign(self):
         ctx = make_context(channel_id=99)
