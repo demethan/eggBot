@@ -1,4 +1,5 @@
 import sqlite3
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -30,7 +31,7 @@ class DatabaseTests(unittest.TestCase):
 
         self.assertEqual(
             [migration.version for migration in first],
-            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+            [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11],
         )
         self.assertEqual(second, [])
         with self.database.connect() as connection:
@@ -50,6 +51,7 @@ class DatabaseTests(unittest.TestCase):
                     (8, "whitelist_admin_actions"),
                     (9, "whitelist_admin_add_actions"),
                     (10, "fry_connectivity_health"),
+                    (11, "self_reported_player_links"),
                 ],
             )
 
@@ -59,6 +61,49 @@ class DatabaseTests(unittest.TestCase):
             self.assertEqual(connection.execute("PRAGMA foreign_keys").fetchone()[0], 1)
             self.assertEqual(connection.execute("PRAGMA journal_mode").fetchone()[0], "wal")
         self.assertEqual(self.database.path.stat().st_mode & 0o777, 0o600)
+
+    def test_self_reported_link_migration_preserves_approved_links(self):
+        legacy_migrations = self.directory / "legacy_migrations"
+        legacy_migrations.mkdir()
+        for migration in self.database.migrations():
+            if migration.version <= 10:
+                shutil.copy2(migration.path, legacy_migrations / migration.path.name)
+        legacy_database = Database(self.database.path, legacy_migrations)
+        legacy_database.migrate()
+        with legacy_database.connect() as connection:
+            application_id = connection.execute(
+                """
+                INSERT INTO applications(
+                    discord_user_id, minecraft_name, over_18, source, status,
+                    submitted_at, decided_at, reviewer_discord_user_id
+                ) VALUES (123, 'Demethan', 1, 'Friend', 'approved',
+                          '2026-08-01T00:00:00+00:00',
+                          '2026-08-01T01:00:00+00:00', 999)
+                """
+            ).lastrowid
+            connection.execute(
+                """
+                INSERT INTO player_discord_links(
+                    discord_user_id, discord_username, discord_display_name,
+                    minecraft_name, application_id, linked_at, updated_at
+                ) VALUES (123, 'discord_user', 'Display Name', 'Demethan', ?,
+                          '2026-08-01T01:00:00+00:00',
+                          '2026-08-01T01:00:00+00:00')
+                """,
+                (application_id,),
+            )
+            connection.commit()
+
+        applied = self.database.migrate()
+        with self.database.connect() as connection:
+            link = connection.execute(
+                "SELECT * FROM player_discord_links WHERE discord_user_id = 123"
+            ).fetchone()
+
+        self.assertEqual([migration.version for migration in applied], [11])
+        self.assertEqual(link["minecraft_name"], "Demethan")
+        self.assertEqual(link["application_id"], application_id)
+        self.assertEqual(link["link_source"], "approved_application")
 
     def test_failed_migration_rolls_back_its_schema_changes(self):
         migrations = self.directory / "migrations"

@@ -79,6 +79,11 @@ thumb voting reactions from the retained application message.
 Each result labels the Minecraft IGN, Discord username, server display name, account
 mention, stable Discord user ID, source application ID, and linked timestamp.
 
+Members without an application-created association may create a one-time,
+self-reported association through `!hours`. `!whois` labels these as **Self-reported
+through !hours** and application-created links as **Approved application**.
+Self-reporting never grants whitelist access or Discord roles.
+
 The `2021-update` API contract used by EggBot is:
 
 - `POST /v1/token/` for JWT authentication

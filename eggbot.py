@@ -60,7 +60,7 @@ class eggBot(commands.Bot):
         tracking = PlayerTrackingService(self.database_connection)
         self.fry_health = FryHealthService(self.database_connection)
         self.tracking_service = tracking
-        await self.add_cog(CommandsCog(self))
+        await self.add_cog(CommandsCog(self, applications))
         await self.add_cog(
             AdminCommandsCog(
                 self, applications, tracking,

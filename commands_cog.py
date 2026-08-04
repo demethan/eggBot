@@ -1,4 +1,5 @@
 import discord
+import aiohttp
 import random
 import re
 import asyncio
@@ -7,6 +8,7 @@ from loguru import logger
 from discord.utils import get
 from datetime import datetime, timezone
 import pytz
+from minecraft_api import validate_minecraft_username
 
 color=0x00ff00
 
@@ -24,11 +26,141 @@ def member_only():
     return commands.check(member_allowed)
 
 class CommandsCog(commands.Cog, name='Commands'):
-    def __init__(self, client):
+    def __init__(self, client, application_service=None):
         self.client = client
+        self.application_service = application_service
 
     def _servers(self):
         return self.client.servers.list_enabled()
+
+    def _hours_embed(self, minecraft_name=None):
+        week_start, week_end, players = self.client.tracking_service.weekly_hours(
+            minecraft_name
+        )
+        embed = discord.Embed(
+            title=f"Player hours — week of {week_start:%Y-%m-%d}", color=color
+        )
+        if not players:
+            embed.description = (
+                f"No tracked sessions for `{minecraft_name}` this week."
+                if minecraft_name
+                else "No tracked sessions this week."
+            )
+        for player in players[:25]:
+            servers = ", ".join(
+                f"{name}: {hours:.1f} h"
+                for name, hours in player.server_hours.items()
+            )
+            open_note = (
+                f"\nOpen sessions: {player.open_sessions}"
+                if player.open_sessions
+                else ""
+            )
+            embed.add_field(
+                name=f"{player.player_name}: {player.total_hours:.1f} h",
+                value=(servers or "No server breakdown") + open_note,
+                inline=False,
+            )
+        embed.set_footer(
+            text=f"{week_start:%Y-%m-%d %H:%M %Z} to {week_end:%Y-%m-%d %H:%M %Z}"
+        )
+        return embed
+
+    async def _request_hours_association(self, ctx):
+        try:
+            dm = await ctx.author.send(
+                "I do not have a Minecraft IGN associated with your Discord account.\n\n"
+                "Reply with **your own Minecraft IGN** to create a permanent association. "
+                "Members can only view hours for their associated IGN. If you enter the "
+                "wrong IGN, an admin must correct it. Type `cancel` to stop."
+            )
+        except discord.HTTPException:
+            await ctx.send("I could not DM you. Enable DMs and run `!hours` again.")
+            return None
+
+        def check(message):
+            return message.author.id == ctx.author.id and message.channel.id == dm.channel.id
+
+        for _ in range(3):
+            try:
+                reply = await self.client.wait_for("message", timeout=120, check=check)
+            except asyncio.TimeoutError:
+                await ctx.author.send("IGN association timed out. No association was created.")
+                return None
+            ign = reply.content.strip()
+            if ign.casefold() == "cancel":
+                await ctx.author.send("IGN association cancelled.")
+                return None
+            timeout = aiohttp.ClientTimeout(total=10)
+            async with aiohttp.ClientSession(timeout=timeout) as session:
+                valid = await validate_minecraft_username(
+                    session, ign, max_retries=3, retry_delay=1
+                )
+            if valid is True:
+                try:
+                    return self.application_service.record_self_reported_link(
+                        discord_user_id=ctx.author.id,
+                        discord_username=ctx.author.name,
+                        discord_display_name=ctx.author.display_name,
+                        minecraft_name=ign,
+                    )
+                except ValueError as error:
+                    if str(error) == "minecraft_already_linked":
+                        await ctx.author.send(
+                            "That IGN is already associated with another Discord account. "
+                            "Contact an admin if this is incorrect."
+                        )
+                    else:
+                        await ctx.author.send(
+                            "Your Discord account already has an IGN association. "
+                            "Contact an admin to correct it."
+                        )
+                    return None
+            if valid is None:
+                await ctx.author.send(
+                    "Minecraft name validation is temporarily unavailable. Try again later."
+                )
+                return None
+            await ctx.author.send("That Minecraft IGN was not found. Try again or type `cancel`.")
+        await ctx.author.send("Too many invalid attempts. No association was created.")
+        return None
+
+    @commands.command(
+        brief="Show your Minecraft play hours for the current week",
+        description=(
+            "Members: DM your current-week hours using your Discord-to-IGN association. "
+            "Admins in the admin channel: !hours [Minecraft IGN]."
+        ),
+    )
+    @member_only()
+    async def hours(self, ctx, *, minecraft_name=None):
+        """Show weekly hours. Members can only view their associated IGN; admins may use !hours [IGN] in the admin channel."""
+        permissions = ctx.author.guild_permissions
+        admin_mode = (
+            ctx.channel.id == self.client.runtime_config.require_int("adminChannelID")
+            and (permissions.administrator or permissions.manage_roles)
+        )
+        if admin_mode:
+            await ctx.send(embed=self._hours_embed(minecraft_name))
+            return
+        if minecraft_name:
+            await ctx.author.send(
+                "Members cannot look up an IGN directly. Run `!hours` without a name; "
+                "I will use the IGN associated with your Discord account."
+            )
+            return
+        if self.application_service is None:
+            await ctx.author.send("Player associations are temporarily unavailable.")
+            return
+        links = self.application_service.find_player_links(str(ctx.author.id))
+        link = links[0] if links else await self._request_hours_association(ctx)
+        if link is None:
+            return
+        await ctx.author.send(embed=self._hours_embed(link.minecraft_name))
+        try:
+            await ctx.message.add_reaction("✅")
+        except discord.HTTPException:
+            pass
 
     #status command, s for short, because people are lazy.
     @commands.command(description='Get info about one or all the Minecraft servers')

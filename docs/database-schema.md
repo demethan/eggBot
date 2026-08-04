@@ -34,6 +34,9 @@ Losing this key makes stored Fry credentials unrecoverable. It must be included 
 - `player_sessions` combines players, servers, optional pack installations, source events, and confidence.
 - `packs`, `pack_versions`, and `pack_installations` retain modpack history.
 - `applications` and `application_whitelist_results` preserve review and per-server audit results.
+- `player_discord_links` maps stable Discord user IDs to Minecraft IGNs and labels
+  links as application-approved or self-reported. Self-reported links have no
+  application foreign key.
 - `settings` replaces mutable configuration values previously stored in `data.json`.
 - `reboot_schedules` stores validated server schedules.
 

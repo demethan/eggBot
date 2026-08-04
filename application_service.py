@@ -123,6 +123,23 @@ class ApplicationService:
     def find_player_links(self, query: str) -> list[PlayerDiscordLink]:
         return self.applications.find_player_links(query)
 
+    def record_self_reported_link(
+        self,
+        *,
+        discord_user_id: int,
+        discord_username: str,
+        discord_display_name: str,
+        minecraft_name: str,
+    ) -> PlayerDiscordLink:
+        link = self.applications.record_self_reported_link(
+            discord_user_id=discord_user_id,
+            discord_username=discord_username,
+            discord_display_name=discord_display_name,
+            minecraft_name=minecraft_name,
+        )
+        self.connection.commit()
+        return link
+
     def offer_followup(
         self, application_id: int, prompt_message_id: int
     ) -> ApplicationFollowup:
