@@ -14,12 +14,26 @@ color=0x00ff00
 
 
 async def member_allowed(ctx):
-    if ctx.guild is None:
-        return False
-    if ctx.author.guild_permissions.administrator:
-        return True
     member_role_id = ctx.bot.runtime_config.require_int("memberRoleID")
-    return any(role.id == member_role_id for role in ctx.author.roles)
+
+    if ctx.guild is not None:
+        members = [ctx.author]
+    else:
+        members = []
+        for guild in ctx.bot.guilds:
+            member = guild.get_member(ctx.author.id)
+            if member is None:
+                try:
+                    member = await guild.fetch_member(ctx.author.id)
+                except (discord.NotFound, discord.Forbidden, discord.HTTPException):
+                    continue
+            members.append(member)
+
+    return any(
+        member.guild_permissions.administrator
+        or any(role.id == member_role_id for role in member.roles)
+        for member in members
+    )
 
 
 def member_only():
@@ -135,11 +149,13 @@ class CommandsCog(commands.Cog, name='Commands'):
     @member_only()
     async def hours(self, ctx, *, minecraft_name=None):
         """Show weekly hours. Members can only view their associated IGN; admins may use !hours [IGN] in the admin channel."""
-        permissions = ctx.author.guild_permissions
-        admin_mode = (
-            ctx.channel.id == self.client.runtime_config.require_int("adminChannelID")
-            and (permissions.administrator or permissions.manage_roles)
-        )
+        admin_mode = False
+        if ctx.guild is not None:
+            permissions = ctx.author.guild_permissions
+            admin_mode = (
+                ctx.channel.id == self.client.runtime_config.require_int("adminChannelID")
+                and (permissions.administrator or permissions.manage_roles)
+            )
         if admin_mode:
             await ctx.send(embed=self._hours_embed(minecraft_name))
             return
