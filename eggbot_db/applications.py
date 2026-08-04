@@ -38,7 +38,8 @@ class PlayerDiscordLink:
     discord_username: str
     discord_display_name: str
     minecraft_name: str
-    application_id: int
+    application_id: Optional[int]
+    link_source: str
     linked_at: str
     updated_at: str
 
@@ -350,6 +351,7 @@ class ApplicationRepository:
                 discord_username = excluded.discord_username,
                 discord_display_name = excluded.discord_display_name,
                 application_id = excluded.application_id,
+                link_source = 'approved_application',
                 updated_at = excluded.updated_at
             """,
             (
@@ -363,6 +365,45 @@ class ApplicationRepository:
             ),
         )
         return self.find_player_links(str(application.discord_user_id))[0]
+
+    def record_self_reported_link(
+        self,
+        *,
+        discord_user_id: int,
+        discord_username: str,
+        discord_display_name: str,
+        minecraft_name: str,
+    ) -> PlayerDiscordLink:
+        existing_user = self.connection.execute(
+            "SELECT 1 FROM player_discord_links WHERE discord_user_id = ?",
+            (discord_user_id,),
+        ).fetchone()
+        if existing_user is not None:
+            raise ValueError("discord_already_linked")
+        existing_ign = self.connection.execute(
+            "SELECT discord_user_id FROM player_discord_links WHERE minecraft_name = ? COLLATE NOCASE",
+            (minecraft_name.strip(),),
+        ).fetchone()
+        if existing_ign is not None:
+            raise ValueError("minecraft_already_linked")
+        now = utc_now()
+        self.connection.execute(
+            """
+            INSERT INTO player_discord_links(
+                discord_user_id, discord_username, discord_display_name,
+                minecraft_name, application_id, link_source, linked_at, updated_at
+            ) VALUES (?, ?, ?, ?, NULL, 'self_reported', ?, ?)
+            """,
+            (
+                discord_user_id,
+                discord_username,
+                discord_display_name,
+                minecraft_name.strip(),
+                now,
+                now,
+            ),
+        )
+        return self.find_player_links(str(discord_user_id))[0]
 
     def find_player_links(self, query: str) -> list[PlayerDiscordLink]:
         normalized = query.strip()

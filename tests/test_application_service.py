@@ -115,10 +115,58 @@ class ApplicationServiceTests(unittest.IsolatedAsyncioTestCase):
             application.id, "discord_user", "Server Nickname"
         )
         self.assertEqual(link.minecraft_name, "Demethan")
+        self.assertEqual(link.link_source, "approved_application")
         self.assertEqual(service.find_player_links("Demethan"), [link])
         self.assertEqual(service.find_player_links("discord_user"), [link])
         self.assertEqual(service.find_player_links("Server Nickname"), [link])
         self.assertEqual(service.find_player_links("123"), [link])
+
+    async def test_self_reported_link_is_one_time_and_ign_is_exclusive(self):
+        service = self.service(FakeFryClient())
+        link = service.record_self_reported_link(
+            discord_user_id=123,
+            discord_username="discord_user",
+            discord_display_name="Server Nickname",
+            minecraft_name="Demethan",
+        )
+
+        self.assertEqual(link.discord_user_id, 123)
+        self.assertEqual(link.minecraft_name, "Demethan")
+        self.assertEqual(link.link_source, "self_reported")
+        self.assertIsNone(link.application_id)
+
+        with self.assertRaisesRegex(ValueError, "discord_already_linked"):
+            service.record_self_reported_link(
+                discord_user_id=123,
+                discord_username="discord_user",
+                discord_display_name="Server Nickname",
+                minecraft_name="AnotherIGN",
+            )
+        with self.assertRaisesRegex(ValueError, "minecraft_already_linked"):
+            service.record_self_reported_link(
+                discord_user_id=456,
+                discord_username="other_user",
+                discord_display_name="Other Nickname",
+                minecraft_name="demethan",
+            )
+
+    async def test_approved_application_promotes_matching_self_reported_link(self):
+        service = self.service(FakeFryClient(already={"BACON", "EGGS"}))
+        service.record_self_reported_link(
+            discord_user_id=123,
+            discord_username="discord_user",
+            discord_display_name="Server Nickname",
+            minecraft_name="Demethan",
+        )
+        application = self.submit(service, user_id=123)
+        result = await service.approve(application.admin_message_id, 999)
+
+        promoted = service.record_player_link(
+            result.application.id, "discord_user", "Server Nickname"
+        )
+
+        self.assertEqual(promoted.link_source, "approved_application")
+        self.assertEqual(promoted.application_id, application.id)
 
     def test_denied_application_cannot_create_player_link(self):
         service = self.service(FakeFryClient())

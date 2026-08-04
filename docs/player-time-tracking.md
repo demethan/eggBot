@@ -21,7 +21,14 @@ the server.` (plus equivalent `the game` variants). Discord message IDs make ing
 idempotent. A join opens one exact session per player/server; a leave closes it. A
 leave without a known join is retained as an event without inventing play time.
 
-Admins with **Manage Roles** can use `!hours` in the admin channel for all current-week
+Members can use `!hours` to receive their current-week hours by DM. EggBot resolves
+the caller's stable Discord user ID to an associated Minecraft IGN; members cannot
+supply an IGN or query another player's association. If no link exists, EggBot asks
+privately for the member's own IGN, validates it with Mojang, rejects an IGN already
+linked to another Discord account, records it as self-reported, and immediately sends
+the report. Corrections require an administrator.
+
+Admins with **Manage Roles** retain `!hours` in the admin channel for all current-week
 hours, or `!hours <Minecraft IGN>` for one player. Weeks begin Monday at midnight in
 `America/Montreal`. Sessions crossing the week boundary are clipped correctly and
 open sessions count through the report time and are labeled.

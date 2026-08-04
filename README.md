@@ -19,6 +19,7 @@ Member commands include:
 - `!c [server]` — connection information by DM
 - `!schedule <IANA timezone>` — reboot schedules
 - `!roll [NdS]` — dice roller
+- `!hours` — privately show your associated IGN's current-week hours
 - `!apply` — membership application flow
 
 Server information and fun commands require the configured member role. `!apply`
@@ -27,7 +28,7 @@ require the configured admin channel plus Manage Roles or Administrator permissi
 
 Administrator commands include:
 
-- `!hours [Minecraft IGN]` — current-week player hours
+- `!hours [Minecraft IGN]` — admin lookup for all players or one IGN
 - `!serverstats [server] [week|month|year|all]`
 - `!packstats [server] [week|month|year|all]`
 - `!whois <Discord user|Minecraft IGN>`
