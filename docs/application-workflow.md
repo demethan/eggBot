@@ -37,6 +37,12 @@ The original admin message is edited with the final or retry status and is never
 deleted. If role assignment fails after whitelisting, the application returns to a
 retryable state; completed FryingPan2 calls are not repeated.
 
+Before assigning the role, EggBot verifies that the configured role exists, is not
+integration-managed, and is below EggBot's highest Discord role. EggBot must have
+Manage Roles permission (or Administrator). After Discord accepts the change, EggBot
+fetches the applicant again and verifies that the role is present. A failure reason is
+shown on the retained application message so an admin can correct it and retry.
+
 Final review details show the reviewer and decision together (`Approved` or `Denied`),
 followed by the per-server whitelist results.
 
