@@ -20,6 +20,10 @@ APPLICATION_TIMEOUT = 300
 CANCEL_WORD = "cancel"
 
 
+class MemberRoleAssignmentError(RuntimeError):
+    """A configuration or Discord state prevents assigning the member role."""
+
+
 class SupportCommandsCog(commands.Cog, name="SupportCommands"):
     def __init__(self, client, application_service: ApplicationService | None = None):
         self.client = client
@@ -322,6 +326,49 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             except discord.HTTPException:
                 logger.exception("Unable to remove application voting reaction")
 
+    async def _assign_member_role(self, guild, application):
+        role_id = self.client.runtime_config.require_int("memberRoleID")
+        member_role = guild.get_role(role_id)
+        if member_role is None:
+            raise MemberRoleAssignmentError(
+                f"Configured member role `{role_id}` does not exist in this Discord server."
+            )
+        if member_role.managed:
+            raise MemberRoleAssignmentError(
+                "The configured member role is managed by an integration and cannot be assigned."
+            )
+
+        bot_member = guild.me
+        if bot_member is None:
+            bot_member = await guild.fetch_member(self.client.user.id)
+        permissions = bot_member.guild_permissions
+        if not (permissions.administrator or permissions.manage_roles):
+            raise MemberRoleAssignmentError(
+                "EggBot needs the Manage Roles permission to assign the member role."
+            )
+        if member_role.position >= bot_member.top_role.position:
+            raise MemberRoleAssignmentError(
+                "EggBot's highest role must be above the configured member role."
+            )
+
+        try:
+            applicant = await guild.fetch_member(application.discord_user_id)
+        except discord.NotFound as exc:
+            raise MemberRoleAssignmentError(
+                "The applicant is no longer a member of this Discord server."
+            ) from exc
+
+        if member_role.id not in {role.id for role in applicant.roles}:
+            await applicant.add_roles(
+                member_role, reason=f"Application #{application.id} approved"
+            )
+            applicant = await guild.fetch_member(application.discord_user_id)
+        if member_role.id not in {role.id for role in applicant.roles}:
+            raise MemberRoleAssignmentError(
+                "Discord accepted the request but did not assign the member role."
+            )
+        return applicant
+
     @commands.Cog.listener()
     async def on_reaction_add(self, reaction, user):
         if user.bot:
@@ -405,22 +452,23 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
 
         result = await self.application_service.approve(reaction.message.id, user.id)
         if result.status == "approved":
-            member_role = discord.utils.get(
-                reaction.message.guild.roles,
-                id=self.client.runtime_config.require_int("memberRoleID"),
-            )
             try:
-                if applicant is None or member_role is None:
-                    raise RuntimeError("Applicant or member role is unavailable")
-                await applicant.add_roles(member_role, reason=f"Application #{result.application.id}")
-            except (discord.HTTPException, RuntimeError) as exc:
-                logger.exception("Whitelist completed but member role assignment failed")
+                applicant = await self._assign_member_role(
+                    reaction.message.guild, result.application
+                )
+            except (discord.HTTPException, MemberRoleAssignmentError) as exc:
+                logger.exception(
+                    "Whitelist completed but member role assignment failed: {}", exc
+                )
                 application = self.application_service.mark_role_failure(
-                    result.application.id, "Discord member role assignment failed"
+                    result.application.id, str(exc)
                 )
                 await reaction.message.edit(
                     embed=self._application_embed(
-                        application, "Needs retry", self._server_summary(result)
+                        application,
+                        "Needs retry",
+                        f"**Role assignment:** {exc}\n"
+                        f"**Whitelist results:**\n{self._server_summary(result)}",
                     )
                 )
                 return
