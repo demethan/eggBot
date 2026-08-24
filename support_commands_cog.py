@@ -451,7 +451,7 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             return
 
         result = await self.application_service.approve(reaction.message.id, user.id)
-        if result.status == "approved":
+        if result.status in ("approved", "partial_failure"):
             try:
                 applicant = await self._assign_member_role(
                     reaction.message.guild, result.application
@@ -468,6 +468,16 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
                         application,
                         "Needs retry",
                         f"**Role assignment:** {exc}\n"
+                        f"**Whitelist results:**\n{self._server_summary(result)}",
+                    )
+                )
+                return
+            if result.status == "partial_failure":
+                await reaction.message.edit(
+                    embed=self._application_embed(
+                        result.application,
+                        "Needs retry",
+                        "**Member role:** Assigned\n"
                         f"**Whitelist results:**\n{self._server_summary(result)}",
                     )
                 )
@@ -499,12 +509,6 @@ class SupportCommandsCog(commands.Cog, name="SupportCommands"):
             )
             await self._remove_voting_reactions(reaction.message)
             await applicant.send(f"Your application was approved by {user.name}.")
-        elif result.status == "partial_failure":
-            await reaction.message.edit(
-                embed=self._application_embed(
-                    result.application, "Needs retry", self._server_summary(result)
-                )
-            )
         elif result.status == "failed":
             logger.error("Unexpected application processing failure")
 

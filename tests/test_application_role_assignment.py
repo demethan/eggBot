@@ -2,6 +2,7 @@ import unittest
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, Mock
 
+from application_service import DecisionResult, ServerWhitelistOutcome
 from support_commands_cog import MemberRoleAssignmentError, SupportCommandsCog
 
 
@@ -86,6 +87,57 @@ class ApplicationRoleAssignmentTests(unittest.IsolatedAsyncioTestCase):
 
         applicant.add_roles.assert_not_awaited()
         self.assertIs(assigned, applicant)
+
+    async def test_partial_whitelist_approval_still_assigns_member_role(self):
+        application = SimpleNamespace(
+            id=7,
+            discord_user_id=123,
+            status="partial_failure",
+            minecraft_name="Player",
+            over_18=True,
+            sponsor_type=None,
+            sponsor_identifier=None,
+            source="Friend",
+            submitted_at="2026-08-24T00:00:00+00:00",
+        )
+        result = DecisionResult(
+            "partial_failure",
+            application,
+            {"BACON": ServerWhitelistOutcome("failed", "connection_error")},
+        )
+        service = SimpleNamespace(
+            get_by_admin_message=Mock(return_value=application),
+            approve=AsyncMock(return_value=result),
+        )
+        self.cog.application_service = service
+        self.cog._handle_followup_reaction = AsyncMock(return_value=False)
+        assigned = member(role())
+        self.cog._assign_member_role = AsyncMock(return_value=assigned)
+        message = SimpleNamespace(
+            id=55,
+            channel=SimpleNamespace(id=10),
+            guild=SimpleNamespace(fetch_member=AsyncMock(return_value=assigned)),
+            edit=AsyncMock(),
+        )
+        reaction = SimpleNamespace(message=message, emoji="👍")
+        reviewer = SimpleNamespace(
+            id=999,
+            bot=False,
+            guild_permissions=SimpleNamespace(
+                administrator=True, manage_roles=True
+            ),
+        )
+        self.client.runtime_config.require_int.side_effect = lambda key: {
+            "adminChannelID": 10,
+            "memberRoleID": 20,
+        }[key]
+
+        await self.cog.on_reaction_add(reaction, reviewer)
+
+        self.cog._assign_member_role.assert_awaited_once_with(
+            message.guild, application
+        )
+        message.edit.assert_awaited_once()
 
 
 if __name__ == "__main__":

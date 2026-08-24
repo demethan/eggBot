@@ -195,12 +195,12 @@ class ApplicationRepository:
         return self.get(application_id)
 
     def mark_partial_failure(self, application_id: int, note: str) -> Application:
-        """Return a completed whitelist decision to a retryable state."""
+        """Record a retryable approval-fulfillment failure."""
         self.connection.execute(
             """
             UPDATE applications
             SET status = 'partial_failure', decided_at = NULL, decision_note = ?
-            WHERE id = ? AND status = 'approved'
+            WHERE id = ? AND status IN ('approved', 'partial_failure')
             """,
             (note, application_id),
         )

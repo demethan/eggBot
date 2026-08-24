@@ -24,8 +24,9 @@ edits and retries do not send additional notifications.
 
 An administrator or member with the Discord **Manage Roles** permission reviews the
 application using the reactions on its admin-channel message. Approval checks and adds
-the IGN directly through each enabled FryingPan2 API. The member role is assigned only
-after every server succeeds. Per-server successes are retained so a later retry calls
+the IGN directly through each enabled FryingPan2 API. The member role is assigned when
+the authorized admin approves, even if one or more Fry servers require a later retry.
+Per-server successes are retained so a later retry calls
 only failed servers. Simultaneous review attempts are locked in SQLite.
 
 On reconnect, EggBot reconciles pending review messages. One unambiguous authorized
